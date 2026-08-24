@@ -110,11 +110,19 @@ class Finding:
         return f"{self.heading()}\n\n{self.message}\n\n{footer(reviewer)}"
 
 
-def footer(reviewer: Reviewer) -> str:
-    """The Attribution Footer. Every posted comment carries it; nothing suppresses it."""
+def footer(reviewer: Reviewer, *, kind: str = "review comment", marker: str = "") -> str:
+    """The Attribution Footer. Every posted comment carries it; nothing suppresses it.
+
+    It is also where a machine-readable marker goes, when one is needed. Bitbucket
+    escapes HTML rather than dropping it, so an `<!-- -->` marker is not invisible: it
+    renders as literal angle brackets at the top of the comment, which is exactly the
+    stray-looking text a human tidies away. Inside this sentence it reads as a tool
+    identifier and survives.
+    """
+    tagged = f" ({marker})" if marker else ""
     return (
         "---\n"
-        f"🤖 Machine-generated review comment, posted by {reviewer.named()} "
+        f"🤖 Machine-generated {kind}{tagged}, posted by {reviewer.named()} "
         f"using `{TOOL_NAME}`. The model wrote it; the account holder is accountable "
         "for it. Reply here if it is wrong."
     )

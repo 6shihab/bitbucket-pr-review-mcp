@@ -36,6 +36,7 @@ from .review import BatchRefused, post_review
 from .search import UnsafeQuery, search_code
 from .settings import Allowlist, Settings
 from .source import UnreadablePath, fetch_directory, fetch_file
+from .summary import MalformedSummary, NotOurComment, publish_summary
 from .verify import KnownIdentity
 
 SERVER_INSTRUCTIONS = """\
@@ -140,6 +141,28 @@ CommentsArg = Annotated[
     ),
 ]
 
+SummaryArg = Annotated[
+    str,
+    Field(
+        description=(
+            "The review's verdict in your own words — what you looked at, what you "
+            "concluded, what a reader should do about it. The counts are added by this "
+            "server from the findings actually on the pull request."
+        )
+    ),
+]
+
+CommentIdArg = Annotated[
+    int | None,
+    Field(
+        description=(
+            "Optional. Normally omit it: this server finds its own summary comment. "
+            "Passing one updates that comment instead, and it is refused unless "
+            "re-reading it shows this server wrote it."
+        )
+    ),
+]
+
 BasisArg = Annotated[
     str,
     Field(
@@ -201,6 +224,28 @@ CommentsArg = Annotated[
             "The findings to post. Send the whole review in one call: the batch is "
             "validated before any of it is sent, which a sequence of single calls "
             "cannot be."
+        )
+    ),
+]
+
+SummaryArg = Annotated[
+    str,
+    Field(
+        description=(
+            "The review's verdict in your own words — what you looked at, what you "
+            "concluded, what a reader should do about it. The counts are added by this "
+            "server from the findings actually on the pull request."
+        )
+    ),
+]
+
+CommentIdArg = Annotated[
+    int | None,
+    Field(
+        description=(
+            "Optional. Normally omit it: this server finds its own summary comment. "
+            "Passing one updates that comment instead, and it is refused unless "
+            "re-reading it shows this server wrote it."
         )
     ),
 ]
@@ -273,6 +318,8 @@ ASKED_FOR_THE_IMPOSSIBLE = (
     BasisMoved,
     BatchRefused,
     MalformedFinding,
+    MalformedSummary,
+    NotOurComment,
     PathNotInDiff,
     UnreadablePath,
     UnsafeQuery,
@@ -445,6 +492,49 @@ def build_server(
             ref,
         )
         return review.to_markdown()
+
+    @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True, openWorldHint=True),
+        description=(
+            "Post or update the one summary comment for this pull request. Write the "
+            "verdict; this server counts the findings already posted and lays them out "
+            "by severity. Called again on a later review it updates the same comment in "
+            "place rather than stacking another — it finds its own by a marker in the "
+            "body, so that holds across restarts. It will only ever update a comment "
+            "this server wrote, checked by re-reading it."
+        ),
+    )
+    async def bitbucket_update_pr_comment(
+        pull_request: PullRequestArg,
+        review_basis: BasisArg,
+        summary: SummaryArg,
+        comment_id: CommentIdArg = None,
+    ) -> str:
+        ref = _reference(pull_request)
+
+        async def work(client: BitbucketClient):
+            reviewer = await _reviewer(client)
+            ours = await whoami.account_id(client)
+            return await publish_summary(
+                client,
+                ref,
+                summary,
+                review_basis,
+                reviewer,
+                ours,
+                comment_id,
+                settings.max_comments,
+            )
+
+        published = await with_bitbucket(work)
+
+        logger.info(
+            "{} the summary on {} (#{})",
+            "Updated" if published.updated else "Posted",
+            ref,
+            published.comment.id,
+        )
+        return published.to_markdown()
 
     async def _reviewer(client: BitbucketClient) -> Reviewer:
         """Whose name goes on the comment. Unknown display name is not a blocker: the

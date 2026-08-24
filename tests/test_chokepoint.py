@@ -203,3 +203,36 @@ class TestTheOneWorkspaceScopedEndpoint:
                 await client.request(method, self.SEARCH)
 
         assert not wire.called
+
+
+class TestTheOnlyOtherWrite:
+    """ADR-0002 permits a PUT for exactly one job: keeping one summary comment current."""
+
+    async def test_updating_one_comment_is_permitted(self, client, wire):
+        await client.request("PUT", f"{ALLOWED}/pullrequests/42/comments/5001", json={})
+
+        assert wire.called
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "/pullrequests/42",
+            "/pullrequests/42/comments",
+            "/pullrequests/42/merge",
+            "/pullrequests/42/approve",
+            "/src/main/README.md",
+            "/pullrequests/42/comments/5001/resolve",
+        ],
+    )
+    async def test_nothing_else_may_be_written_to(self, client, wire, path):
+        with pytest.raises(Forbidden):
+            await client.request("PUT", f"{ALLOWED}{path}", json={})
+
+        assert not wire.called
+
+    async def test_a_comment_may_not_be_deleted_even_by_us(self, client, wire):
+        with pytest.raises(Forbidden) as caught:
+            await client.request("DELETE", f"{ALLOWED}/pullrequests/42/comments/5001")
+
+        assert "colleague's reply" in str(caught.value)
+        assert not wire.called

@@ -29,6 +29,7 @@ from bitbucket_pr_review_mcp.references import PullRequestRef, Repository
 from bitbucket_pr_review_mcp.repositories import read_repository
 from bitbucket_pr_review_mcp.search import repository_of
 from bitbucket_pr_review_mcp.source import read_entry
+from bitbucket_pr_review_mcp.summary import MARKER, canonical, tally_of
 
 RECORDED = Path(__file__).parent / "recorded"
 REF = PullRequestRef("jantrik", "admin-client", 2476)
@@ -272,3 +273,60 @@ class TestARecordedDeletedComment:
 
         assert read.is_deleted
         assert "deleted" in read.flags()
+
+
+class TestARecordedSummaryComment:
+    """The canonical summary, posted and then updated in place on a live pull request.
+
+    The first version of it carried the marker in an HTML comment. Bitbucket's rendered
+    html came back as `<p>&lt;!-- bitbucket-pr-review-mcp:summary/1 --&gt;</p>` — escaped
+    and visible, not dropped — so the marker moved into the Attribution Footer, where it
+    reads as a tool identifier instead of stray markup. This is that comment after the
+    move, which found itself by the token that both formats share.
+    """
+
+    SUMMARY = 847224255
+
+    def test_it_is_recognised_as_the_canonical_summary(self):
+        ours = tuple(
+            read_comment(value, OUR_REAL_ACCOUNT)
+            for value in recorded("comments.json")["values"]
+            if not value.get("deleted")
+        )
+
+        assert canonical(ours) is not None
+        assert canonical(ours).id == self.SUMMARY
+
+    def test_there_is_exactly_one_of_them(self):
+        summaries = [
+            value
+            for value in recorded("comments.json")["values"]
+            if not value.get("deleted") and MARKER in value["content"]["raw"]
+        ]
+
+        assert len(summaries) == 1, "a second review updates, it does not stack"
+
+    def test_it_is_not_anchored_to_a_line(self):
+        assert comment(self.SUMMARY).get("inline") is None
+
+    def test_the_rendered_comment_opens_with_its_heading_not_with_markup(self):
+        rendered = comment(self.SUMMARY)["content"]["html"]
+
+        assert rendered.startswith("<h1")
+        assert "&lt;!--" not in rendered, "the reason the marker is not an HTML comment"
+
+    def test_the_marker_survives_in_the_footer(self):
+        raw = comment(self.SUMMARY)["content"]["raw"]
+
+        assert MARKER in raw
+        assert raw.index(MARKER) > raw.index("---")
+
+    def test_the_tally_it_carries_matches_the_findings_on_the_pull_request(self):
+        values = recorded("comments.json")["values"]
+        ours = tuple(read_comment(value, OUR_REAL_ACCOUNT) for value in values)
+        live_ours = tuple(one for one in ours if not one.is_deleted)
+
+        counted = tally_of(live_ours)
+
+        assert counted["MEDIUM"] == 1 and counted["LOW"] == 2
+        assert "| MEDIUM (info) | 1 |" in comment(self.SUMMARY)["content"]["raw"]
