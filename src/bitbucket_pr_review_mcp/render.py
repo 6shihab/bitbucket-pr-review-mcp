@@ -27,3 +27,20 @@ def field_table(rows: list[tuple[str, str]]) -> str:
     lines = ["| | |", "|---|---|"]
     lines.extend(f"| **{name}** | {value} |" for name, value in rows)
     return "\n".join(lines)
+
+
+def clip(body: str, limit: int) -> tuple[str, bool]:
+    """Cut content down to a limit, and say whether it was cut.
+
+    The saying-so is the point, and it belongs *outside* the untrusted fence: a Caller
+    that cannot tell a truncated diff from a complete one will review the missing half
+    by assuming it was fine.
+    """
+    if len(body) <= limit:
+        return body, False
+    return body[:limit].rstrip(), True
+
+
+def notice(message: str) -> str:
+    """This server's own words about a response, above the fence rather than inside it."""
+    return f"> **{message}**"

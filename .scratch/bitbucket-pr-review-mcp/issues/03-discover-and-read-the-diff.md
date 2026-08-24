@@ -18,14 +18,29 @@ written by whoever opened it.
 
 **Blocked by:** 01 — needs the HTTP client, allowlist guard and reference parsing.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The changes manifest lists every changed file with change type and added/removed counts
-- [ ] Binary, generated and lockfile entries are flagged in the manifest
-- [ ] The diff tool returns the whole diff when no path is given
-- [ ] The diff tool returns only the named file's hunks when a path is given
-- [ ] Reading N files from one Pull Request issues one diff fetch, not N
-- [ ] The cached diff is keyed on the Review Basis and is not served after the Basis moves
-- [ ] A truncated response says so explicitly and suggests narrowing rather than raising a limit
-- [ ] All returned content is wrapped in untrusted-content delimiters with the standing notice
-- [ ] A path that is not in the Pull Request is rejected with an error naming how to list the changed files
+- [x] The changes manifest lists every changed file with change type and added/removed counts
+- [x] Binary, generated and lockfile entries are flagged in the manifest
+- [x] The diff tool returns the whole diff when no path is given
+- [x] The diff tool returns only the named file's hunks when a path is given
+- [x] Reading N files from one Pull Request issues one diff fetch, not N
+- [x] The cached diff is keyed on the Review Basis and is not served after the Basis moves
+- [x] A truncated response says so explicitly and suggests narrowing rather than raising a limit
+- [x] All returned content is wrapped in untrusted-content delimiters with the standing notice
+- [x] A path that is not in the Pull Request is rejected with an error naming how to list the changed files
+
+## Notes
+
+**The diff endpoint redirects.** Bitbucket answers `/pullrequests/{id}/diff` with a 302 to
+the commit-spec diff URL. The transport is deliberately built with `follow_redirects=False`
+(ticket 01), so the hop is followed in `client.get_text` and the target goes back through
+`assert_permitted` — a transport-level redirect would have skipped the chokepoint, which
+is the one thing ADR-0002 cannot afford. A redirect off `api.bitbucket.org` is refused.
+
+**Hunk ranges are parsed now, not in ticket 06.** Ticket 06 validates Anchors against the
+hunks; reading `@@` headers here rather than re-parsing there keeps one parser.
+
+**Classification is by path.** The diffstat endpoint carries no binary flag and no file
+content, so binary/generated/lockfile are recognised from the path. The flags are
+advisory — nothing is filtered out, and the manifest still lists every file.

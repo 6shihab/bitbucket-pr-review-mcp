@@ -107,3 +107,8 @@ class Settings(BaseSettings):
     repositories_file: Path = Path("config/repositories.yaml")
     log_level: str = "INFO"
     request_timeout_seconds: float = 30.0
+
+    # Response ceilings. A Caller reading past these is reviewing from memory, so both
+    # are stated in the response rather than silently applied (ADR-0005's markdown note).
+    max_changed_files: int = 300
+    max_diff_characters: int = 60_000

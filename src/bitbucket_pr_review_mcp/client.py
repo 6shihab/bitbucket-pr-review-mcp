@@ -24,6 +24,10 @@ __all__ = ["BitbucketClient", "BitbucketError", "Forbidden", "NotFound", "Unauth
 
 API_BASE = "https://api.bitbucket.org"
 
+# Bitbucket pages at 10 by default and 100 at most; these bound a walk, not a page.
+MAX_PAGES = 20
+MAX_REDIRECTS = 3
+
 
 class BitbucketError(RuntimeError):
     """Bitbucket refused or failed a request that this server was allowed to make."""
@@ -59,23 +63,78 @@ class BitbucketClient:
         json: Any | None = None,
     ) -> httpx.Response:
         """Issue one request, or refuse it before anything leaves the process."""
+        return self._checked(await self._send(method, path, params=params, json=json))
+
+    async def get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
+        response = await self.request("GET", path, params=params)
+        return response.json()
+
+    async def get_pages(
+        self,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        page_cap: int = MAX_PAGES,
+    ) -> tuple[list[Any], bool]:
+        """Walk a paginated collection. Returns the values and whether more remain.
+
+        The cap is a real answer rather than a silent one: a pull request with ten
+        thousand changed files gets what fits and a Caller told that it was cut short.
+        """
+        values: list[Any] = []
+        next_url: str | None = path
+        query = params
+
+        for _ in range(page_cap):
+            payload = await self.get_json(next_url, params=query)
+            values.extend(payload.get("values") or [])
+            next_url, query = payload.get("next"), None
+            if not next_url:
+                return values, False
+
+        return values, True
+
+    async def get_text(self, path: str, *, params: dict[str, Any] | None = None) -> str:
+        """GET something that is not JSON — a diff, a raw file.
+
+        Bitbucket answers the diff endpoints with a redirect to the same host, so one
+        hop is followed here rather than by httpx: the redirect target goes back through
+        `assert_permitted` (ADR-0002), which a transport-level redirect would skip.
+        """
+        response = await self._send("GET", path, accept="text/plain")
+
+        for _ in range(MAX_REDIRECTS):
+            if not response.is_redirect:
+                break
+            location = response.headers.get("location", "")
+            if not location:
+                break
+            response = await self._send("GET", location, accept="text/plain")
+
+        return self._checked(response).text
+
+    async def _send(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any | None = None,
+        accept: str = "application/json",
+    ) -> httpx.Response:
+        """The one place a request leaves this process, guard first."""
         assert_permitted(method, path, self._allowlist)
 
-        response = await self._http.request(
+        return await self._http.request(
             method,
             path,
             params=params,
             json=json,
             headers={
                 "Authorization": self._credential.authorization_header(),
-                "Accept": "application/json",
+                "Accept": accept,
             },
         )
-        return self._checked(response)
-
-    async def get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
-        response = await self.request("GET", path, params=params)
-        return response.json()
 
     async def aclose(self) -> None:
         await self._http.aclose()

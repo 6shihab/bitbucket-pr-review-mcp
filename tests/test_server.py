@@ -14,10 +14,23 @@ import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
+from bitbucket_pr_review_mcp.render import UNTRUSTED_CLOSE, UNTRUSTED_OPEN
 from bitbucket_pr_review_mcp.server import build_server
 from bitbucket_pr_review_mcp.settings import Settings
 
 from . import fixtures
+
+PR = "https://bitbucket.org/streamstech/db-explorer/pull-requests/42"
+
+
+def text_of(result) -> str:
+    """What the Caller actually reads.
+
+    Asserting against `str(result.content)` reads the repr instead, which escapes
+    quotes — and the untrusted fence contains an apostrophe, so those assertions fail
+    for a reason that has nothing to do with the server.
+    """
+    return "\n".join(block.text for block in result.content)
 
 
 def build(wire, allowlist, gate):
@@ -69,7 +82,7 @@ class TestCallingTheTool:
             {"pull_request": "https://bitbucket.org/streamstech/db-explorer/pull-requests/42"},
         )
 
-        assert "Retry the upstream call" in str(result.content)
+        assert "Retry the upstream call" in text_of(result)
 
     async def test_a_malformed_reference_teaches_the_accepted_forms(self, server, wire):
         with pytest.raises(ToolError) as caught:
@@ -155,3 +168,107 @@ class TestWhenBitbucketRejectsTheCredential:
 
         assert setup_listener.starts == 1
         assert setup_listener.URL in str(caught.value)
+
+
+class TestTheDiffTools:
+    """Wiring only — the parsing, slicing and caching are tested a layer down."""
+
+    async def test_both_tools_are_registered(self, server):
+        names = [tool.name for tool in await server.list_tools()]
+
+        assert "bitbucket_get_pull_request_changes" in names
+        assert "bitbucket_get_pull_request_diff" in names
+
+    async def test_the_manifest_lists_the_changed_files(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, json=fixtures.diffstat()),
+        )
+
+        result = await server.call_tool(
+            "bitbucket_get_pull_request_changes", {"pull_request": PR}
+        )
+
+        assert "src/app/retry.py" in text_of(result)
+        assert "lockfile" in text_of(result)
+
+    async def test_the_diff_tool_returns_everything_when_no_path_is_given(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+        )
+
+        result = await server.call_tool("bitbucket_get_pull_request_diff", {"pull_request": PR})
+
+        assert "src/app/retry.py" in text_of(result)
+        assert "uv.lock" in text_of(result)
+
+    async def test_the_diff_tool_returns_one_file_when_a_path_is_given(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+        )
+
+        result = await server.call_tool(
+            "bitbucket_get_pull_request_diff", {"pull_request": PR, "path": "uv.lock"}
+        )
+
+        assert "uv.lock" in text_of(result)
+        assert "src/app/retry.py" not in text_of(result)
+
+    async def test_reading_three_files_costs_one_diff_fetch(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            *[httpx.Response(200, json=fixtures.pull_request()) for _ in range(2)],
+        )
+
+        for path in ["src/app/retry.py", "uv.lock", "docs/notes.md"]:
+            await server.call_tool(
+                "bitbucket_get_pull_request_diff", {"pull_request": PR, "path": path}
+            )
+
+        diff_fetches = [r for r in wire.requests if r.url.path.endswith("/diff")]
+        assert len(diff_fetches) == 1, "browsing file by file must not re-fetch the diff"
+
+    async def test_a_force_push_invalidates_what_was_cached(self, server, wire):
+        moved = fixtures.pull_request(basis=fixtures.OLD_BASIS)
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            httpx.Response(200, json=moved),
+            httpx.Response(200, text="diff --git a/rewritten b/rewritten\n"),
+        )
+
+        await server.call_tool("bitbucket_get_pull_request_diff", {"pull_request": PR})
+        after = await server.call_tool("bitbucket_get_pull_request_diff", {"pull_request": PR})
+
+        assert "rewritten" in text_of(after)
+        assert len([r for r in wire.requests if r.url.path.endswith("/diff")]) == 2
+
+    async def test_a_path_the_pull_request_does_not_touch_says_how_to_list_them(
+        self, server, wire
+    ):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+        )
+
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_get_pull_request_diff",
+                {"pull_request": PR, "path": "src/app/imagined.py"},
+            )
+
+        assert "bitbucket_get_pull_request_changes" in str(caught.value)
+
+    async def test_everything_returned_is_fenced_as_untrusted(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+        )
+
+        result = await server.call_tool("bitbucket_get_pull_request_diff", {"pull_request": PR})
+
+        assert UNTRUSTED_OPEN in text_of(result)
+        assert UNTRUSTED_CLOSE in text_of(result)
