@@ -269,6 +269,25 @@ read:user:bitbucket          read:repository:bitbucket
 read:pullrequest:bitbucket   write:pullrequest:bitbucket
 ```
 
+## Running it in a container
+
+The server is one process reading stdin and writing stdout, so the image has no port, no
+daemon and no entrypoint script — `docker run -i` and talk to it. What the container
+cannot do is the interesting part, and both are consequences of decisions made earlier
+rather than oversights:
+
+- **It has no keychain**, so it cannot store a credential. It is given one through the
+  environment instead, which is worse and is treated as worse: nothing falls back to it,
+  both variables must be set, the store refuses to save, and startup says at WARNING what
+  was traded. See [ADR-0007](adr/0007-the-container-is-given-its-credential.md).
+- **It cannot open the setup page.** The listener binds a random loopback port *inside*
+  the container, which a browser on the host cannot reach — and there would be nowhere
+  durable to save what was entered. `--setup` exits 2 naming where setup can be run.
+
+The allowlist is mounted read-only rather than baked in: it names the repositories the
+server may touch, and that list belongs to whoever runs the image. The image itself
+carries only code — no writable state, no root, no capabilities.
+
 ## Tests
 
 The seam is the transport and nothing else. Every test builds a real `BitbucketClient`
@@ -323,3 +342,4 @@ and were corrected only by running against the real API.
 | [0004](adr/0004-setup-listener-lives-inside-the-server.md) — setup inside the server | `setup_app.py`, `setup_listener.py`, and `gate.py`, which decides when it may open |
 | [0005](adr/0005-tool-surface.md) — eleven tools | `server.py`; one string names a pull request, parsed in `references.py`; the batch in `review.py` |
 | [0006](adr/0006-the-read-surface-is-wider-than-the-pull-request.md) — wider read surface | `source.py`, `commits.py`, `repositories.py`, and `search.py`'s two extra guards |
+| [0007](adr/0007-the-container-is-given-its-credential.md) — a container is given its credential | `environment.py`, and the `Dockerfile` that has nowhere to store one |

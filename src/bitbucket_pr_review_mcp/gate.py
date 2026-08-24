@@ -22,11 +22,16 @@ from typing import Protocol
 from loguru import logger
 
 from .credentials import Credential, CredentialError, StoredCredential
-from .keychain import Keychain
 
 RENEW_COMMAND = "uv run bb-pr-mcp --setup"
 
 EXPIRY_WARNING_DAYS = 7
+
+
+class CredentialStore(Protocol):
+    """Where the credential is read from: the OS keychain, or a container's environment."""
+
+    def load(self) -> StoredCredential | None: ...
 
 
 class Setup(Protocol):
@@ -55,7 +60,7 @@ class CredentialGate:
 
     def __init__(
         self,
-        keychain: Keychain,
+        keychain: CredentialStore,
         setup: Setup,
         today: Callable[[], date] = date.today,
     ) -> None:

@@ -1,0 +1,29 @@
+# Run the server in a container: `docker compose run --rm bitbucket-pr-review`.
+#
+# It speaks MCP over stdio, so there is no port and nothing to `up`. The service exists
+# so the flags below are written down once rather than remembered.
+services:
+  bitbucket-pr-review:
+    build: .
+    image: bitbucket-pr-review-mcp:local
+
+    # stdio is the whole interface.
+    stdin_open: true
+    tty: false
+
+    # The credential, from a file that is not in this repository. See docs/adr/0007.
+    # Keep it outside the working tree, or at least out of git: `.env.docker` is
+    # gitignored here, and `docker inspect` will show these values on the container.
+    env_file:
+      - .env.docker
+
+    volumes:
+      # The allowlist: the repositories this server may touch at all. Read-only —
+      # nothing in the server writes it, and a container that could rewrite its own
+      # access control would be a strange thing to build.
+      - ./config/repositories.yaml:/config/repositories.yaml:ro
+
+    # Nothing here writes to disk, listens on a port, or needs a capability.
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]

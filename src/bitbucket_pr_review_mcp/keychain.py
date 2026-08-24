@@ -22,6 +22,7 @@ from keyring.errors import KeyringError
 from loguru import logger
 
 from .credentials import Credential, CredentialError, StoredCredential
+from .environment import EMAIL_ENV, TOKEN_ENV
 
 SERVICE = "bitbucket-pr-review-mcp"
 ACCOUNT = "credential"  # one Reviewer per device, so one entry (ADR-0003)
@@ -101,8 +102,12 @@ def _unavailable(verb: str, exc: Exception) -> KeychainUnavailable:
     return KeychainUnavailable(
         f"Cannot {verb} the OS keychain ({exc}). This server stores the Atlassian API "
         "token in the keychain and nowhere else, so it stops here rather than falling "
-        "back to a file (ADR-0003). On Linux this usually means no Secret Service is "
-        "running; install gnome-keyring or KWallet and unlock it, then try again."
+        "back to a file (ADR-0003).\n"
+        "  * On Linux, this usually means no Secret Service is running: install "
+        "gnome-keyring or KWallet, unlock it, and try again.\n"
+        "  * In a container there is no keychain at all. Supply the credential through "
+        f"the environment instead — {EMAIL_ENV} and {TOKEN_ENV} — which is a deliberate "
+        "trade documented in ADR-0007, not a fallback this server takes on its own."
     )
 
 __all__ = ["ACCOUNT", "SERVICE", "Credential", "Keychain", "KeychainUnavailable"]

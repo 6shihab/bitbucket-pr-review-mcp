@@ -18,3 +18,6 @@ htmlcov/
 
 # Local run logs
 setup.log
+
+# Docker credential file (ADR-0007). Never committed.
+.env.docker

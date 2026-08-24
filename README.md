@@ -138,6 +138,69 @@ For Claude Code:
 claude mcp add bitbucket-pr-review -- uv run --directory /path/to/bitbucket-pr-review-mcp bb-pr-mcp
 ```
 
+## Running it in Docker
+
+The image speaks MCP over stdio like everything else, so there is no port and nothing to
+`up`. Build it, then run it with `-i` and talk to it.
+
+```
+docker build -t bitbucket-pr-review-mcp:local .
+```
+
+**A container has no keychain**, and the setup page cannot help: it binds a loopback port
+*inside* the container, which your browser cannot reach. So a containerised run is
+*given* its credential instead of storing one. That is a real downgrade — an environment
+variable is visible to `docker inspect` and to anything that can read the process — and it
+is a decision rather than a fallback: nothing degrades into it, both variables must be
+set, and startup says so every time. See
+[ADR-0007](docs/adr/0007-the-container-is-given-its-credential.md).
+
+Put the credential in a file that is **not** in this repository:
+
+```
+BB_MCP_EMAIL=you@yourcompany.com
+BB_MCP_API_TOKEN=ATATT...
+BB_MCP_TOKEN_EXPIRES_ON=2027-08-24
+```
+
+Then check it, and wire it into a client:
+
+```
+docker run --rm \
+  --env-file /path/to/env.docker \
+  -v /path/to/repositories.yaml:/config/repositories.yaml:ro \
+  bitbucket-pr-review-mcp:local --check
+```
+
+```json
+{
+  "mcpServers": {
+    "bitbucket-pr-review": {
+      "command": "docker",
+      "args": [
+        "run", "--rm", "-i",
+        "--env-file", "/path/to/env.docker",
+        "-v", "/path/to/repositories.yaml:/config/repositories.yaml:ro",
+        "bitbucket-pr-review-mcp:local"
+      ]
+    }
+  }
+}
+```
+
+`compose.yaml` writes the same flags down once: `docker compose run --rm
+bitbucket-pr-review`, reading `.env.docker` (gitignored) from this directory.
+
+A few things worth knowing:
+
+- **On Windows, use a Windows-style path in `-v`** (`d:/path/to/repositories.yaml:/config/...`).
+  Under Git Bash, prefix the command with `MSYS_NO_PATHCONV=1` or the path is rewritten.
+- **The allowlist is mounted, not baked in.** It names the repositories the server may
+  touch; that list belongs to whoever runs the image, not to the image.
+- **`--setup` exits 2 in a container**, saying where setup can be run instead. Rotating a
+  token means restarting with a new one.
+- The container runs as a non-root user, read-only, with every capability dropped.
+
 ## The tools
 
 | Tool | What it does |

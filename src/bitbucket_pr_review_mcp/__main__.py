@@ -25,6 +25,7 @@ from loguru import logger
 from . import __version__
 from .client import BitbucketError, Unauthorized, build_http_client
 from .credentials import Credential, CredentialError, StoredCredential
+from .environment import EnvironmentStore, SetupUnavailable
 from .gate import CredentialGate
 from .keychain import Keychain
 from .server import build_server
@@ -70,6 +71,11 @@ def _build_gate(
 
     async def verify(credential: Credential) -> Identity:
         return await verify_credential(credential, allowlist, make_http)
+
+    supplied = EnvironmentStore.configured()
+    if supplied is not None:
+        supplied.announce()
+        return CredentialGate(supplied, SetupUnavailable())
 
     keychain = Keychain()
     return CredentialGate(keychain, SetupListener(keychain=keychain, verify=verify))
@@ -126,14 +132,14 @@ def _startup_checks(
     pull requests is not a token this server will hold, and starting anyway would leave
     that decision to whoever reads the logs — which is nobody (ADR-0002).
     """
-    warning = gate.expiry_warning()
-    if warning:
-        logger.warning(warning)
-
     try:
+        warning = gate.expiry_warning()
+        if warning:
+            logger.warning(warning)
         credential = gate.current()
     except CredentialError as exc:
-        # Not fatal: the server starts, and every tool answers with this same message.
+        # Not fatal: the server starts, and every tool answers with this same message —
+        # including "there is no keychain here", which is how this looks in a container.
         logger.warning("{}", exc)
         return
 
@@ -167,11 +173,10 @@ async def _run_check(
     """Prove the configuration and the credential actually work. Returns a shell code."""
     logger.info("Allowlisted repositories: {}", ", ".join(allowlist.names()))
 
-    warning = gate.expiry_warning()
-    if warning:
-        logger.warning(warning)
-
     try:
+        warning = gate.expiry_warning()
+        if warning:
+            logger.warning(warning)
         credential = gate.current()
     except CredentialError as exc:
         logger.error("{}", exc)
@@ -212,12 +217,20 @@ def _run_setup(gate: CredentialGate) -> int:
     a chance to use it.
     """
     entered: list[StoredCredential] = []
-    replacing = gate.stored() is not None
+
+    try:
+        replacing = gate.stored() is not None
+        url = gate.open_setup(entered.append)
+    except CredentialError as exc:
+        # There is nowhere to save a credential — a container, or a broken keychain.
+        # The message says where this can be fixed instead; a traceback would not.
+        logger.error("{}", exc)
+        return 2
 
     logger.info(
         "Open this page to {} Bitbucket:\n    {}",
         "replace the credential for" if replacing else "connect",
-        gate.open_setup(entered.append),
+        url,
     )
     if replacing:
         logger.info("The credential already stored keeps working until you save a new one.")

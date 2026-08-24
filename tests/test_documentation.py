@@ -164,3 +164,40 @@ class TestTheFactsWorthKeeping:
     )
     def test_the_fact_is_recorded(self, fact):
         assert fact in FLAT_ARCHITECTURE
+
+
+class TestTheContainer:
+    """Docker collides with ADR-0003, so the documentation has to say how, not gloss it."""
+
+    DOCKERFILE = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    COMPOSE = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    IGNORE = (ROOT / ".dockerignore").read_text(encoding="utf-8")
+    GITIGNORE = (ROOT / ".gitignore").read_text(encoding="utf-8")
+
+    def test_the_readme_says_a_container_has_no_keychain(self):
+        assert "A container has no keychain" in FLAT_README
+        assert "0007-the-container-is-given-its-credential.md" in README
+
+    def test_it_names_the_cost_rather_than_glossing_it(self):
+        assert "docker inspect" in FLAT_README
+
+    def test_the_credential_file_is_never_committed(self):
+        assert ".env.docker" in self.GITIGNORE
+        assert ".env" in self.IGNORE
+
+    def test_the_allowlist_is_not_baked_into_the_image(self):
+        assert "config/repositories.yaml" in self.IGNORE
+        assert "/config/repositories.yaml:ro" in self.COMPOSE
+
+    def test_the_image_runs_as_a_person_who_is_not_root(self):
+        assert "USER reviewer" in self.DOCKERFILE
+        assert "read_only: true" in self.COMPOSE
+        assert 'cap_drop: ["ALL"]' in self.COMPOSE
+
+    def test_nothing_in_the_image_is_a_secret(self):
+        for word in ("ATATT", "BB_MCP_API_TOKEN=", "BB_MCP_EMAIL="):
+            assert word not in self.DOCKERFILE
+            assert word not in self.COMPOSE
+
+    def test_the_tests_are_not_shipped_in_the_image(self):
+        assert "tests" in self.IGNORE

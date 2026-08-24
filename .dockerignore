@@ -1,0 +1,18 @@
+# Everything the image does not need, and one thing it must never have.
+.git
+.venv
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+__pycache__
+*.pyc
+.scratch
+tests
+docs
+setup.log
+
+# The allowlist is mounted at run time, and .env holds settings that belong to a
+# workstation. Neither is baked into an image somebody might push.
+.env
+config/repositories.yaml
