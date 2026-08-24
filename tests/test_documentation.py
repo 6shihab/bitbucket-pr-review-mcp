@@ -201,3 +201,22 @@ class TestTheContainer:
 
     def test_the_tests_are_not_shipped_in_the_image(self):
         assert "tests" in self.IGNORE
+
+
+class TestTheCredentialLifecycle:
+    """First run, persistence, deletion, and the property that holds them together."""
+
+    def test_removing_the_credential_is_documented(self):
+        assert "--forget" in README
+        assert "still exists at Atlassian" in FLAT_README
+
+    def test_the_readme_says_why_deletion_is_not_a_tool(self):
+        assert "no tool" in FLAT_README
+        assert "talk a model into calling" in FLAT_README
+
+    def test_it_states_that_the_model_never_sees_the_token(self):
+        assert "The model never sees the token" in README
+        assert "never in a tool's answer" in FLAT_README
+
+    def test_it_distinguishes_the_setup_token_from_the_api_token(self):
+        assert "a *different* single-use token" in FLAT_README

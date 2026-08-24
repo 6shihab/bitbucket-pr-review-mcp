@@ -28,6 +28,7 @@ from .credentials import Credential, CredentialError, StoredCredential
 from .environment import EnvironmentStore, SetupUnavailable
 from .gate import CredentialGate
 from .keychain import Keychain
+from .scopes import TOKEN_PAGE
 from .server import build_server
 from .settings import Allowlist, ConfigError, Settings, load_allowlist
 from .setup_listener import SetupListener
@@ -97,10 +98,18 @@ def main() -> None:
         action="store_true",
         help="Open the credential setup page in this terminal's browser, then exit.",
     )
+    parser.add_argument(
+        "--forget",
+        action="store_true",
+        help="Remove the stored credential from this device's keychain, then exit.",
+    )
     args = parser.parse_args()
 
     settings, allowlist = _load()
     gate = _build_gate(settings, allowlist)
+
+    if args.forget:
+        raise SystemExit(_run_forget(gate))
 
     if args.setup:
         raise SystemExit(_run_setup(gate))
@@ -205,6 +214,32 @@ async def _run_check(
         )
 
     logger.info("Authenticated as {} ({}).", identity.display_name, credential.email)
+    return 0
+
+
+def _run_forget(gate: CredentialGate) -> int:
+    """Remove the credential from this device. Deliberately a command, not a tool.
+
+    The token also has a life outside this machine: forgetting it here stops this server
+    using it and nothing else, so the message says where to actually revoke it.
+    """
+    try:
+        stored = gate.stored()
+        gate.forget()
+    except CredentialError as exc:
+        logger.error("{}", exc)
+        return 2
+
+    if stored is None:
+        logger.info("There was no credential stored on this device.")
+    else:
+        logger.info(
+            "Removed the credential for {} from this device. It still exists at "
+            "Atlassian: revoke it at {} if it should stop working everywhere.",
+            stored.email,
+            TOKEN_PAGE,
+        )
+    logger.info("Run `bb-pr-mcp --setup` to connect an account again.")
     return 0
 
 

@@ -107,6 +107,29 @@ That validates the allowlist, the credential and its scopes, prints who you are 
 as, and exits with a shell status — `0` fine, `1` no usable credential, `2` a token whose
 scopes are wrong.
 
+### Removing it
+
+```
+uv run bb-pr-mcp --forget
+```
+
+That deletes the credential from this device's keychain and nothing else — the token
+still exists at Atlassian until you revoke it there, and the command says so. The next
+tool call will hand you a fresh setup link.
+
+There is deliberately **no tool** for this. A tool that deletes the credential is a tool
+a pull request description can talk a model into calling, and nothing is gained: whoever
+wants it gone is at a terminal already.
+
+### The model never sees the token
+
+The token goes from your browser into the keychain, and from there into an
+`Authorization` header. It is never an argument to a tool, never in a tool's answer,
+never in an error message, and not in the setup URL — that carries a *different*
+single-use token, which grants nothing but the right to fill in one form on this machine.
+`tests/test_the_token_never_reaches_the_model.py` goes looking for it in all of those
+places.
+
 ### If the keychain is unavailable
 
 The credential goes in the OS keychain and nowhere else — never a file. On macOS and

@@ -33,6 +33,8 @@ class CredentialStore(Protocol):
 
     def load(self) -> StoredCredential | None: ...
 
+    def clear(self) -> None: ...
+
 
 class Setup(Protocol):
     """The setup listener, as far as the gate is concerned."""
@@ -60,11 +62,11 @@ class CredentialGate:
 
     def __init__(
         self,
-        keychain: CredentialStore,
+        store: CredentialStore,
         setup: Setup,
         today: Callable[[], date] = date.today,
     ) -> None:
-        self._keychain = keychain
+        self._store = store
         self._setup = setup
         self._today = today
         self._rejected = False
@@ -99,7 +101,7 @@ class CredentialGate:
         no-credential-yet loop keeps looking.
         """
         if self._held is None:
-            self._held = self._keychain.load()
+            self._held = self._store.load()
         return self._held
 
     def accept_saved(self, stored: StoredCredential) -> None:
@@ -132,6 +134,18 @@ class CredentialGate:
                 f"(on {stored.expires_on.isoformat()}). Renew it with: {RENEW_COMMAND}"
             )
         return None
+
+    def forget(self) -> None:
+        """Remove the stored credential. A person's decision, never a Caller's.
+
+        There is deliberately no tool for this. A tool that deletes the credential is a
+        tool a pull request description can talk a Caller into calling, and "the review
+        server logged itself out" is a bad afternoon for no benefit — the Reviewer who
+        wants it gone is at a terminal already.
+        """
+        self._store.clear()
+        self._held, self._rejected = None, False
+        logger.info("The stored credential has been removed.")
 
     def close(self) -> None:
         self._setup.stop()
