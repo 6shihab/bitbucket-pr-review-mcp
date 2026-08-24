@@ -155,46 +155,53 @@ class TestRecordedRepositoryReads:
         assert repository_of(value) == Repository("jantrik", "admin-client")
 
 
+def comment(comment_id: int) -> dict:
+    """One recorded comment by id. Positions shift as the recording grows; ids do not."""
+    found = {value["id"]: value for value in recorded("comments.json")["values"]}
+    return found[comment_id]
+
+
 class TestARecordedComment:
     """The first comment this server ever posted, read back from Bitbucket.
 
     It is the reason ranges work. The reference this was built from describes `inline`
     as `{path, from, to}`; the real object has `start_from` and `start_to` as well, so
     Bitbucket can anchor to a block and the first implementation here was wrong to say
-    it could not.
+    it could not. It has since been deleted by hand, which is why its body is empty and
+    why it is worth keeping in the recording.
     """
 
     def test_the_inline_object_carries_the_range_fields(self):
-        inline = recorded("comments.json")["values"][0]["inline"]
+        inline = comment(847207531)["inline"]
 
         assert set(inline) == {"path", "from", "to", "start_from", "start_to"}
 
     def test_a_single_line_anchor_leaves_the_range_fields_null(self):
-        inline = recorded("comments.json")["values"][0]["inline"]
+        inline = comment(847218781)["inline"]
 
         assert inline["to"] == 2 and inline["from"] is None
         assert inline["start_to"] is None and inline["start_from"] is None
 
     def test_there_is_no_outdated_field_on_a_live_anchor(self):
         """Which is why a null pair is also read as orphaned: absence is the only signal."""
-        assert "outdated" not in recorded("comments.json")["values"][0]["inline"]
+        assert "outdated" not in comment(847218781)["inline"]
 
     def test_the_reader_places_it_where_bitbucket_says(self):
-        comment = read_comment(recorded("comments.json")["values"][0], OUR_REAL_ACCOUNT)
+        read = read_comment(comment(847218781), OUR_REAL_ACCOUNT)
 
-        assert comment.anchor == "README.md:2 (added/context)"
-        assert comment.is_ours
-        assert not comment.is_orphaned
+        assert read.anchor == "README.md:2 (added/context)"
+        assert read.is_ours
+        assert not read.is_orphaned
 
     def test_the_attribution_footer_survived_the_round_trip(self):
-        comment = read_comment(recorded("comments.json")["values"][0], OUR_REAL_ACCOUNT)
+        read = read_comment(comment(847218781), OUR_REAL_ACCOUNT)
 
-        assert "Machine-generated review comment" in comment.body
-        assert "bitbucket-pr-review-mcp" in comment.body
+        assert "Machine-generated review comment" in read.body
+        assert "bitbucket-pr-review-mcp" in read.body
 
 
 class TestARecordedRangeComment:
-    """The second live post, which settled which end of the range each field names.
+    """Which end of the range each field names, settled by posting one.
 
     Sent `start_to: 3, to: 5`; Bitbucket stored exactly that. So `start_to` is the first
     line of the block and `to` is the last — the badge lands on the last line, and the
@@ -202,21 +209,66 @@ class TestARecordedRangeComment:
     """
 
     def test_bitbucket_kept_the_range_it_was_given(self):
-        inline = recorded("comments.json")["values"][1]["inline"]
+        inline = comment(847218798)["inline"]
 
         assert inline["start_to"] == 3, "the first line of the block"
         assert inline["to"] == 5, "the last line of the block"
         assert inline["start_from"] is None and inline["from"] is None
 
     def test_the_reader_reports_the_whole_block(self):
-        comment = read_comment(recorded("comments.json")["values"][1], OUR_REAL_ACCOUNT)
+        read = read_comment(comment(847218798), OUR_REAL_ACCOUNT)
 
-        assert comment.anchor == "README.md:3-5 (added/context)"
-        assert comment.start_line == 3
-        assert comment.line == 5
+        assert read.anchor == "README.md:3-5 (added/context)"
+        assert read.start_line == 3
+        assert read.line == 5
 
     def test_the_range_is_named_in_the_body_as_well(self):
         """A reader who only sees the badge on the last line still learns the block."""
-        comment = read_comment(recorded("comments.json")["values"][1], OUR_REAL_ACCOUNT)
+        read = read_comment(comment(847218798), OUR_REAL_ACCOUNT)
 
-        assert "context lines 3–5" in comment.body
+        assert "context lines 3–5" in read.body
+
+
+class TestARecordedRemovedSideComment:
+    """The inversion trap, proved live.
+
+    A comment on a removed line came back as `{"from": 2, "to": null}` — the old file's
+    numbering, with nothing on the new side. Every unit test asserts this mapping; this
+    is the one that watched Bitbucket do it.
+    """
+
+    def test_a_removed_line_anchors_on_the_old_side_only(self):
+        inline = comment(847218787)["inline"]
+
+        assert inline["from"] == 2
+        assert inline["to"] is None
+
+    def test_the_reader_calls_it_removed(self):
+        read = read_comment(comment(847218787), OUR_REAL_ACCOUNT)
+
+        assert read.anchor == "README.md:2 (removed)"
+        assert read.old_line == 2 and read.new_line is None
+
+    def test_it_sits_at_the_same_number_as_a_different_added_line(self):
+        """`added 2` and `removed 2` are two different places, and both were posted."""
+        added = read_comment(comment(847218781), OUR_REAL_ACCOUNT)
+        removed = read_comment(comment(847218787), OUR_REAL_ACCOUNT)
+
+        assert added.line == removed.line == 2
+        assert added.anchor != removed.anchor
+
+
+class TestARecordedDeletedComment:
+    """What deletion looks like from the API: the id survives, the body does not."""
+
+    def test_a_deleted_comment_keeps_its_id_and_loses_its_body(self):
+        deleted = comment(847207531)
+
+        assert deleted["deleted"] is True
+        assert deleted["content"]["raw"] == ""
+
+    def test_the_reader_marks_it_rather_than_hiding_it(self):
+        read = read_comment(comment(847207531), OUR_REAL_ACCOUNT)
+
+        assert read.is_deleted
+        assert "deleted" in read.flags()

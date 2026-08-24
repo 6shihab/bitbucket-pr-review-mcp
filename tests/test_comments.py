@@ -242,3 +242,48 @@ class TestAskingWhoWeAre:
         whoami.forget()
 
         assert await whoami.account_id(client) == "different"
+
+
+class TestDeletedComments:
+    """Deletion keeps the id and empties the body — observed on a real pull request.
+
+    They stay in the listing, because a thread that existed is worth knowing about. They
+    are not ours to update or deduplicate against: ticket 08 finds the Summary Comment
+    to update through `ours`, and updating a deleted one is a write into a grave.
+    """
+
+    def deleted(self, comment_id: int = 900) -> dict:
+        return {
+            "id": comment_id,
+            "content": {"raw": ""},
+            "user": {"account_id": OURS, "display_name": "Anwar Hossain"},
+            "created_on": "2026-08-24T12:00:00.000000+00:00",
+            "deleted": True,
+            "inline": {"path": "README.md", "from": None, "to": 2},
+        }
+
+    async def test_a_deleted_comment_is_not_one_of_ours(self, client, wire):
+        wire.will_return(httpx.Response(200, json={"values": [self.deleted()]}))
+
+        found = await fetch_comments(client, REF, OURS, limit=200)
+
+        assert found.comments[0].is_ours, "authorship is still a fact about it"
+        assert found.ours == (), "but it is not something to update or answer"
+
+    async def test_it_is_still_listed_and_marked(self, client, wire):
+        wire.will_return(httpx.Response(200, json={"values": [self.deleted()]}))
+
+        rendered = (await fetch_comments(client, REF, OURS, limit=200)).to_markdown()
+
+        assert "deleted" in rendered
+        assert "#900" in rendered
+
+    async def test_the_counts_separate_the_living_from_the_dead(self, client, wire):
+        payload = fixtures.comments()
+        payload["values"].append(self.deleted())
+        wire.will_return(httpx.Response(200, json=payload))
+
+        rendered = (await fetch_comments(client, REF, OURS, limit=200)).to_markdown()
+
+        assert "| **Comments** | 5 |" in rendered
+        assert "| **Deleted** | 1 |" in rendered

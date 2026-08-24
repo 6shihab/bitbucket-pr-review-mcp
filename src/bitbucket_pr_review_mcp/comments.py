@@ -113,8 +113,19 @@ class Conversation:
         return self.more_remain or len(self.comments) < self.total
 
     @property
+    def live(self) -> tuple[Comment, ...]:
+        """Comments that still exist. A deleted one keeps its id and loses its body."""
+        return tuple(comment for comment in self.comments if not comment.is_deleted)
+
+    @property
     def ours(self) -> tuple[Comment, ...]:
-        return tuple(comment for comment in self.comments if comment.is_ours)
+        """Ours, and still standing.
+
+        Deleted comments are excluded deliberately: ticket 08 finds the Summary Comment
+        to update through here, and updating a deleted one would be a write into a grave
+        — Bitbucket keeps the id long after the body is gone.
+        """
+        return tuple(comment for comment in self.live if comment.is_ours)
 
     @property
     def orphaned_ours(self) -> tuple[Comment, ...]:
@@ -126,7 +137,8 @@ class Conversation:
             "",
             field_table(
                 [
-                    ("Comments", str(self.total)),
+                    ("Comments", str(len(self.live))),
+                    ("Deleted", str(len(self.comments) - len(self.live))),
                     ("Written by this server", str(len(self.ours))),
                     ("Ours, now orphaned", str(len(self.orphaned_ours))),
                 ]
