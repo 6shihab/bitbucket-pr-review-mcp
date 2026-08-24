@@ -20,13 +20,13 @@ list is the worse outcome.
 
 **Blocked by:** 06 — needs Anchor validation, the Basis check and Finding rendering.
 
-**Status:** done — one criterion verified against fixtures only, noted below
+**Status:** done
 
-- [ ] Many comments post in one call, each landing on its correct file and line
-      Verified at the transport seam, not yet against a live pull request: posting a
-      real batch means writing several comments to somebody's repository, which needs
-      asking first. The single-comment path *has* been posted live (ticket 06), and this
-      is the same code path with a longer list.
+- [x] Many comments post in one call, each landing on its correct file and line
+      Verified live: three findings posted to `jantrik/admin-client` 2476 in one call,
+      and Bitbucket stored `{"to": 2}`, `{"from": 2}` and `{"start_to": 3, "to": 5}`
+      respectively. The middle one is the inversion trap watched happening: `added 2`
+      and `removed 2` are two different places, and both landed on the right one.
 - [x] One invalid Anchor anywhere in the batch prevents the entire batch from posting
       Verified live against `jantrik/admin-client` 2476: a batch of two, one anchored to
       an invented line 400, refused with nothing posted and both problems listed.
@@ -68,3 +68,10 @@ or — worse, if the spellings are ever swapped — allow one it should have ref
 comparison has to be prefix-aware in whichever direction is shorter, and the length has
 to be long enough to mean something. `tests/test_recorded_responses.py` pins the
 observed behaviour.
+
+**What deletion looks like.** The two comments from ticket 06 were deleted by hand
+between runs and came back in the listing with their ids intact and their bodies empty.
+`Conversation.ours` now excludes them — ticket 08 finds the Summary Comment to update
+through that property, and updating a deleted comment would be a write into a grave.
+They stay listed and marked `deleted`, because a thread that existed is worth knowing
+about, and they no longer block a re-post of the same point.
