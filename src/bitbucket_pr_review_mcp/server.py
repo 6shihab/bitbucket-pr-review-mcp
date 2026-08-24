@@ -16,7 +16,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from loguru import logger
 from mcp.types import ToolAnnotations
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from .anchors import SIDES, AnchorNotInDiff
 from .changes import fetch_changes
@@ -28,10 +28,11 @@ from .diffs import DiffCache, PathNotInDiff, diff_markdown, fetch_diff, select
 from .findings import Finding, MalformedFinding, Reviewer
 from .gate import CredentialGate
 from .guard import Forbidden
-from .posting import BasisMoved, anchor_of, post_finding
+from .posting import BasisMoved, anchor_of
 from .pullrequests import fetch_pull_request
 from .references import InvalidReference, PullRequestRef, Repository
 from .repositories import fetch_repository
+from .review import BatchRefused, post_review
 from .search import UnsafeQuery, search_code
 from .settings import Allowlist, Settings
 from .source import UnreadablePath, fetch_directory, fetch_file
@@ -89,6 +90,120 @@ FilePathArg = Annotated[
     Field(description="A path from the repository root, e.g. 'src/app/retry.py'."),
 ]
 
+
+class CommentInput(BaseModel):
+    """One finding to post. A review is a list of these; a single comment is a list of one."""
+
+    severity: str = Field(
+        description="CRITICAL (block), HIGH (warn), MEDIUM (info) or LOW (note)."
+    )
+    message: str = Field(
+        description="What you want to say. Written by you; this server only renders it."
+    )
+    path: str = Field(description="The file, exactly as the diff names it.")
+    line: int = Field(
+        description=(
+            "The line number the diff's gutter shows for that side: the new-file column "
+            "for added and context lines, the old-file column for removed ones."
+        )
+    )
+    side: str = Field(description=f"Which side of the diff the line is on: {', '.join(SIDES)}.")
+    category: str = Field(
+        default="review",
+        description="A couple of words for what kind of finding this is, e.g. 'correctness'.",
+    )
+    through_line: int | None = Field(
+        default=None,
+        description=(
+            "Optional last line of a range. The comment covers the whole block and its "
+            "heading names the range."
+        ),
+    )
+
+    def to_finding(self) -> Finding:
+        return Finding.of(
+            severity=self.severity,
+            category=self.category,
+            message=self.message,
+            anchor=anchor_of(self.path, self.line, self.side, self.through_line),
+        )
+
+
+CommentsArg = Annotated[
+    list[CommentInput],
+    Field(
+        description=(
+            "The findings to post. Send the whole review in one call: the batch is "
+            "validated before any of it is sent, which a sequence of single calls "
+            "cannot be."
+        )
+    ),
+]
+
+BasisArg = Annotated[
+    str,
+    Field(
+        description=(
+            "The Review Basis from bitbucket_get_pull_request — the commit you read the "
+            "diff at. Re-checked before anything is posted."
+        )
+    ),
+]
+
+PathArg = Annotated[
+    str,
+    Field(description="A path from the repository root, e.g. 'src/app/retry.py'."),
+]
+
+
+class CommentInput(BaseModel):
+    """One finding to post. A review is a list of these; a single comment is a list of one."""
+
+    severity: str = Field(
+        description="CRITICAL (block), HIGH (warn), MEDIUM (info) or LOW (note)."
+    )
+    message: str = Field(
+        description="What you want to say. Written by you; this server only renders it."
+    )
+    path: str = Field(description="The file, exactly as the diff names it.")
+    line: int = Field(
+        description=(
+            "The line number the diff's gutter shows for that side: the new-file column "
+            "for added and context lines, the old-file column for removed ones."
+        )
+    )
+    side: str = Field(description=f"Which side of the diff the line is on: {', '.join(SIDES)}.")
+    category: str = Field(
+        default="review",
+        description="A couple of words for what kind of finding this is, e.g. 'correctness'.",
+    )
+    through_line: int | None = Field(
+        default=None,
+        description=(
+            "Optional last line of a range. The comment covers the whole block and its "
+            "heading names the range."
+        ),
+    )
+
+    def to_finding(self) -> Finding:
+        return Finding.of(
+            severity=self.severity,
+            category=self.category,
+            message=self.message,
+            anchor=anchor_of(self.path, self.line, self.side, self.through_line),
+        )
+
+
+CommentsArg = Annotated[
+    list[CommentInput],
+    Field(
+        description=(
+            "The findings to post. Send the whole review in one call: the batch is "
+            "validated before any of it is sent, which a sequence of single calls "
+            "cannot be."
+        )
+    ),
+]
 
 BasisArg = Annotated[
     str,
@@ -156,6 +271,7 @@ ASKED_FOR_THE_IMPOSSIBLE = (
     AmbiguousRequest,
     AnchorNotInDiff,
     BasisMoved,
+    BatchRefused,
     MalformedFinding,
     PathNotInDiff,
     UnreadablePath,
@@ -289,41 +405,46 @@ def build_server(
     @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, openWorldHint=True),
         description=(
-            "Post one finding as an inline comment, anchored to a line of the diff. "
-            "Requires the Review Basis you read the diff at: if the branch has been "
-            "pushed to since, nothing is posted and you are told to re-read. The anchor "
-            "is validated against the diff hunks first, so a line that is not in the diff "
-            "is an error naming the nearest lines that are — not a comment on the wrong "
-            "code. Every comment carries a machine-generated footer."
+            "Post your findings as inline comments — one, or a whole review at once. "
+            "Requires the Review Basis you read the diff at. The entire batch is checked "
+            "before any of it is sent: if one anchor is not in the diff, or the branch "
+            "has been pushed to since you read it, nothing is posted and you are told "
+            "why. A finding identical to a comment already at that line is skipped "
+            "rather than repeated. Nothing is ever deleted, so a partial failure leaves "
+            "what landed in place and tells you exactly what to re-post."
         ),
     )
     async def bitbucket_add_pr_comment(
         pull_request: PullRequestArg,
         review_basis: BasisArg,
-        severity: SeverityArg,
-        message: MessageArg,
-        path: FilePathArg,
-        line: LineArg,
-        side: SideArg,
-        category: CategoryArg = "review",
-        through_line: ThroughArg = None,
+        comments: CommentsArg,
     ) -> str:
         ref = _reference(pull_request)
 
         async def work(client: BitbucketClient):
-            finding = Finding.of(
-                severity=severity,
-                category=category,
-                message=message,
-                anchor=anchor_of(path, line, side, through_line),
-            )
+            findings = [item.to_finding() for item in comments]
             reviewer = await _reviewer(client)
-            return await post_finding(client, ref, finding, review_basis, reviewer, diffs)
+            ours = await whoami.account_id(client)
+            return await post_review(
+                client,
+                ref,
+                findings,
+                review_basis,
+                reviewer,
+                ours,
+                diffs,
+                settings.max_comments,
+            )
 
-        posted = await with_bitbucket(work)
+        review = await with_bitbucket(work)
 
-        logger.info("Posted to {}: {}", ref, posted.describe())
-        return _posting_report(posted)
+        logger.info(
+            "Posted {} of {} findings to {}",
+            review.count("posted"),
+            len(review.outcomes),
+            ref,
+        )
+        return review.to_markdown()
 
     async def _reviewer(client: BitbucketClient) -> Reviewer:
         """Whose name goes on the comment. Unknown display name is not a blocker: the

@@ -426,6 +426,7 @@ class TestPostingAComment:
             httpx.Response(200, json=fixtures.current_user()),
             httpx.Response(200, json=fixtures.pull_request()),
             httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            httpx.Response(200, json={"values": []}),
             httpx.Response(
                 201,
                 json={
@@ -443,16 +444,20 @@ class TestPostingAComment:
             {
                 "pull_request": PR,
                 "review_basis": fixtures.BASIS,
-                "severity": "HIGH",
-                "message": "`RETRIES` is undefined on this path.",
-                "path": "src/app/retry.py",
-                "line": 14,
-                "side": "added",
+                "comments": [
+                    {
+                        "severity": "HIGH",
+                        "message": "`RETRIES` is undefined on this path.",
+                        "path": "src/app/retry.py",
+                        "line": 14,
+                        "side": "added",
+                    }
+                ],
             },
         )
 
         assert "3001" in text_of(result)
-        assert "footer" in text_of(result).lower()
+        assert "posted" in text_of(result)
 
     async def test_the_footer_is_in_what_is_actually_sent(self, server, wire):
         import json
@@ -461,6 +466,7 @@ class TestPostingAComment:
             httpx.Response(200, json=fixtures.current_user()),
             httpx.Response(200, json=fixtures.pull_request()),
             httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            httpx.Response(200, json={"values": []}),
             httpx.Response(201, json={"id": 3002, "inline": {"path": "x", "to": 1}}),
         )
 
@@ -469,11 +475,15 @@ class TestPostingAComment:
             {
                 "pull_request": PR,
                 "review_basis": fixtures.BASIS,
-                "severity": "LOW",
-                "message": "A note.",
-                "path": "src/app/retry.py",
-                "line": 14,
-                "side": "added",
+                "comments": [
+                    {
+                        "severity": "LOW",
+                        "message": "A note.",
+                        "path": "src/app/retry.py",
+                        "line": 14,
+                        "side": "added",
+                    }
+                ],
             },
         )
 
@@ -493,11 +503,15 @@ class TestPostingAComment:
                 {
                     "pull_request": PR,
                     "review_basis": fixtures.BASIS,
-                    "severity": "HIGH",
-                    "message": "Something.",
-                    "path": "src/app/retry.py",
-                    "line": 14,
-                    "side": "added",
+                    "comments": [
+                        {
+                            "severity": "HIGH",
+                            "message": "Something.",
+                            "path": "src/app/retry.py",
+                            "line": 14,
+                            "side": "added",
+                        }
+                    ],
                 },
             )
 
@@ -517,11 +531,15 @@ class TestPostingAComment:
                 {
                     "pull_request": PR,
                     "review_basis": fixtures.BASIS,
-                    "severity": "HIGH",
-                    "message": "Something.",
-                    "path": "src/app/retry.py",
-                    "line": 900,
-                    "side": "added",
+                    "comments": [
+                        {
+                            "severity": "HIGH",
+                            "message": "Something.",
+                            "path": "src/app/retry.py",
+                            "line": 900,
+                            "side": "added",
+                        }
+                    ],
                 },
             )
 

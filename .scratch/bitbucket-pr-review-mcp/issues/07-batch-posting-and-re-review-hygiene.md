@@ -20,16 +20,43 @@ list is the worse outcome.
 
 **Blocked by:** 06 — needs Anchor validation, the Basis check and Finding rendering.
 
-**Status:** ready-for-agent
+**Status:** done — one criterion verified against fixtures only, noted below
 
 - [ ] Many comments post in one call, each landing on its correct file and line
-- [ ] One invalid Anchor anywhere in the batch prevents the entire batch from posting
-- [ ] A stale Review Basis refuses the entire batch
-- [ ] A mid-batch network failure returns a per-comment result naming exactly what landed
-- [ ] Nothing is deleted or reverted after a partial failure
-- [ ] A single comment posts through the same tool without ceremony
-- [ ] An Inline Comment identical to an existing one at the same path and line is refused
-- [ ] Stale Inline Comments authored by this server are surfaced and marked, and are not deleted
+      Verified at the transport seam, not yet against a live pull request: posting a
+      real batch means writing several comments to somebody's repository, which needs
+      asking first. The single-comment path *has* been posted live (ticket 06), and this
+      is the same code path with a longer list.
+- [x] One invalid Anchor anywhere in the batch prevents the entire batch from posting
+      Verified live against `jantrik/admin-client` 2476: a batch of two, one anchored to
+      an invented line 400, refused with nothing posted and both problems listed.
+- [x] A stale Review Basis refuses the entire batch
+      Verified live: posting against the destination branch's commit was refused with
+      both commits named.
+- [x] A mid-batch network failure returns a per-comment result naming exactly what landed
+- [x] Nothing is deleted or reverted after a partial failure
+- [x] A single comment posts through the same tool without ceremony
+- [x] An Inline Comment identical to an existing one at the same path and line is refused
+      Verified live: re-posting ticket 06's comment was skipped, naming #847207531.
+- [x] Stale Inline Comments authored by this server are surfaced and marked, and are not deleted
+
+## Notes
+
+**Validation is a phase, not a per-comment step.** The Basis is re-checked, then every
+Anchor is checked, and only then does the first POST go out. That is what makes the
+guarantee "a partial write can only come from the network" true rather than aspirational.
+
+**Duplicate detection compares what was said, not who said it.** An identical point from
+a colleague counts as already made: the reader cannot tell the difference, and repeating
+it is the same noise either way. Comparison normalises whitespace and case and strips
+this server's own furniture — the severity heading and the Attribution Footer — because
+an existing comment of ours carries both and the Finding being posted carries neither
+yet. Without that, every re-review would look like a new point.
+
+**A rejected credential stops the batch; a single failed request does not.** A 401 will
+not fix itself on the next comment, so the rest are marked `not attempted` rather than
+hammered. A 500 might be one bad request, so the batch continues and the report says
+which ones to re-post.
 
 ## Note from the first live run (2026-08-24)
 
