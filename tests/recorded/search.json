@@ -1,0 +1,114 @@
+{
+  "size": 3,
+  "page": 1,
+  "pagelen": 2,
+  "next": "https://api.bitbucket.org/2.0/workspaces/%7B4fc5904c-13ef-4de4-9012-9ab08949411d%7D/search/code?search_query=repo%3Aadmin-client+AuthGuard&pagelen=2&page=2",
+  "query_substituted": false,
+  "values": [
+    {
+      "type": "code_search_result",
+      "content_match_count": 1,
+      "content_matches": [
+        {
+          "lines": [
+            {
+              "line": 10,
+              "segments": [
+                {
+                  "text": "REDACTED"
+                }
+              ]
+            },
+            {
+              "line": 11,
+              "segments": [
+                {
+                  "text": "REDACTED"
+                },
+                {
+                  "text": "REDACTED",
+                  "match": true
+                },
+                {
+                  "text": "REDACTED"
+                }
+              ]
+            },
+            {
+              "line": 12,
+              "segments": [
+                {
+                  "text": "REDACTED"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "path_matches": [
+        {
+          "text": "REDACTED"
+        },
+        {
+          "text": "REDACTED",
+          "match": true
+        },
+        {
+          "text": "REDACTED"
+        },
+        {
+          "text": "REDACTED",
+          "match": true
+        },
+        {
+          "text": "REDACTED"
+        }
+      ],
+      "file": {
+        "path": "src/app/core/auth/guards/auth.guard.ts",
+        "type": "commit_file",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/e53751b5e2ede5deb5e388149d4b591990718bd9/src/app/core/auth/guards/auth.guard.ts"
+          }
+        }
+      }
+    },
+    {
+      "type": "code_search_result",
+      "content_match_count": 0,
+      "content_matches": [],
+      "path_matches": [
+        {
+          "text": "REDACTED"
+        },
+        {
+          "text": "REDACTED"
+        },
+        {
+          "text": "REDACTED",
+          "match": true
+        },
+        {
+          "text": "REDACTED"
+        },
+        {
+          "text": "REDACTED",
+          "match": true
+        },
+        {
+          "text": "REDACTED"
+        }
+      ],
+      "file": {
+        "path": "src/app/core/auth/guards/noAuth.guard.ts",
+        "type": "commit_file",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/e53751b5e2ede5deb5e388149d4b591990718bd9/src/app/core/auth/guards/noAuth.guard.ts"
+          }
+        }
+      }
+    }
+  ]
+}

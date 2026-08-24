@@ -27,6 +27,12 @@ API_HOST = "api.bitbucket.org"
 # GET /2.0/user — needed to verify a credential and to learn whose comments are ours.
 _CURRENT_USER = re.compile(r"^/2\.0/user$")
 
+# GET /2.0/workspaces/{workspace}/search/code — the one endpoint that is not repository
+# scoped, because Bitbucket has no repository-scoped code search. Permitted only for a
+# workspace the allowlist reaches, and `search.py` filters the results on the way back:
+# the request cannot be narrowed to a repository, so the answer has to be (ADR-0006).
+_WORKSPACE_SEARCH = re.compile(r"^/2\.0/workspaces/(?P<workspace>[^/]+)/search/code$")
+
 # GET /2.0/repositories/{workspace}/{repo}/... — anything under an allowed repository.
 _REPOSITORY_SCOPED = re.compile(r"^/2\.0/repositories/(?P<workspace>[^/]+)/(?P<repo>[^/]+)(/.*)?$")
 
@@ -61,6 +67,10 @@ def assert_permitted(method: str, url: str, allowlist: Allowlist) -> None:
     if verb == "GET":
         if _CURRENT_USER.match(path):
             return
+        search = _WORKSPACE_SEARCH.match(path)
+        if search:
+            _require_allowlisted_workspace(search.group("workspace"), allowlist)
+            return
         _require_allowlisted(_REPOSITORY_SCOPED, path, allowlist, verb)
         return
 
@@ -87,6 +97,14 @@ def _require_allowlisted(
         raise Forbidden(
             f"{repository.full_name} is not an allowlisted repository. "
             f"This server may touch: {', '.join(allowlist.names())}."
+        )
+
+
+def _require_allowlisted_workspace(workspace: str, allowlist: Allowlist) -> None:
+    if not allowlist.permits_workspace(workspace):
+        raise Forbidden(
+            f"{workspace} is not a workspace this server reaches. It may search: "
+            f"{', '.join(sorted(allowlist.workspaces()))}."
         )
 
 

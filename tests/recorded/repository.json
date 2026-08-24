@@ -1,0 +1,127 @@
+{
+  "type": "repository",
+  "full_name": "jantrik/admin-client",
+  "links": {
+    "self": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client"
+    },
+    "html": {
+      "href": "https://bitbucket.org/jantrik/admin-client"
+    },
+    "avatar": {
+      "href": "https://bytebucket.org/ravatar/%7B39c7fcb0-acf4-49d5-9c59-beb68655e6f5%7D?ts=default"
+    },
+    "pullrequests": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/pullrequests"
+    },
+    "commits": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commits"
+    },
+    "forks": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/forks"
+    },
+    "watchers": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/watchers"
+    },
+    "branches": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/refs/branches"
+    },
+    "tags": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/refs/tags"
+    },
+    "downloads": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/downloads"
+    },
+    "source": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src"
+    },
+    "clone": [
+      {
+        "name": "https",
+        "href": "https://shihabulhasan@bitbucket.org/jantrik/admin-client.git"
+      },
+      {
+        "name": "ssh",
+        "href": "git@bitbucket.org:jantrik/admin-client.git"
+      }
+    ],
+    "hooks": {
+      "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/hooks"
+    }
+  },
+  "name": "admin-client",
+  "slug": "admin-client",
+  "description": "Admin Project for client side",
+  "scm": "git",
+  "website": null,
+  "owner": {
+    "display_name": "Jantrik",
+    "links": {
+      "self": {
+        "href": "https://api.bitbucket.org/2.0/workspaces/%7B4fc5904c-13ef-4de4-9012-9ab08949411d%7D"
+      },
+      "avatar": {
+        "href": "https://bitbucket.org/account/jantrik/avatar/"
+      },
+      "html": {
+        "href": "https://bitbucket.org/%7B4fc5904c-13ef-4de4-9012-9ab08949411d%7D/"
+      }
+    },
+    "type": "team",
+    "uuid": "{4fc5904c-13ef-4de4-9012-9ab08949411d}",
+    "username": "jantrik"
+  },
+  "workspace": {
+    "type": "workspace",
+    "uuid": "{4fc5904c-13ef-4de4-9012-9ab08949411d}",
+    "name": "Jantrik",
+    "slug": "jantrik",
+    "links": {
+      "avatar": {
+        "href": "https://bitbucket.org/workspaces/jantrik/avatar/?ts=1728483479"
+      },
+      "html": {
+        "href": "https://bitbucket.org/jantrik/"
+      },
+      "self": {
+        "href": "https://api.bitbucket.org/2.0/workspaces/jantrik"
+      }
+    }
+  },
+  "is_private": true,
+  "project": {
+    "type": "project",
+    "key": "AP",
+    "uuid": "{409a5a83-9f80-45bd-bd77-0501d4717be0}",
+    "name": "Application_Framework",
+    "links": {
+      "self": {
+        "href": "https://api.bitbucket.org/2.0/workspaces/jantrik/projects/AP"
+      },
+      "html": {
+        "href": "https://bitbucket.org/jantrik/workspace/projects/AP"
+      },
+      "avatar": {
+        "href": "https://bitbucket.org/jantrik/workspace/projects/AP/avatar/32?ts=1658903629"
+      }
+    }
+  },
+  "fork_policy": "no_public_forks",
+  "created_on": "2022-09-13T11:08:24.798403+00:00",
+  "updated_on": "2026-08-24T12:46:56.696792+00:00",
+  "size": 44060373,
+  "language": "typescript",
+  "uuid": "{39c7fcb0-acf4-49d5-9c59-beb68655e6f5}",
+  "mainbranch": {
+    "name": "dev",
+    "type": "branch"
+  },
+  "override_settings": {
+    "default_merge_strategy": true,
+    "branching_model": false
+  },
+  "parent": null,
+  "enforced_signed_commits": null,
+  "has_issues": false,
+  "has_wiki": false
+}

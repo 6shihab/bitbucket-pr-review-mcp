@@ -63,9 +63,12 @@ class BitbucketClient:
         *,
         params: dict[str, Any] | None = None,
         json: Any | None = None,
+        accept: str = "application/json",
     ) -> httpx.Response:
         """Issue one request, or refuse it before anything leaves the process."""
-        return self._checked(await self._sent(method, path, params=params, json=json))
+        return self._checked(
+            await self._sent(method, path, params=params, json=json, accept=accept)
+        )
 
     async def get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         response = await self.request("GET", path, params=params)

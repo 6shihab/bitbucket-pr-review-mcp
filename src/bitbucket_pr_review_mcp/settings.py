@@ -53,6 +53,19 @@ class Allowlist:
     def permits(self, repository: Repository) -> bool:
         return repository.full_name.lower() in self._permitted
 
+    def permits_workspace(self, workspace: str) -> bool:
+        """Whether any allowlisted repository lives in this workspace.
+
+        Only code search needs this: Bitbucket's search endpoint is workspace-scoped, so
+        the request cannot be narrower than a workspace even though the answer must be
+        (ADR-0006). Permission to *ask* a workspace is not permission to read what comes
+        back — `search.py` filters the results against `permits` before returning them.
+        """
+        return workspace.strip().lower() in self.workspaces()
+
+    def workspaces(self) -> frozenset[str]:
+        return frozenset(name.split("/", 1)[0] for name in self._permitted)
+
     def names(self) -> tuple[str, ...]:
         return self._names
 
@@ -112,3 +125,7 @@ class Settings(BaseSettings):
     # are stated in the response rather than silently applied (ADR-0005's markdown note).
     max_changed_files: int = 300
     max_diff_characters: int = 60_000
+    max_file_characters: int = 40_000
+    max_directory_entries: int = 200
+    max_commits: int = 50
+    max_search_results: int = 25

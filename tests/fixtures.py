@@ -148,3 +148,118 @@ def _diffstat_entry(
         "old": None if old is None else {"path": old, "type": "commit_file"},
         "new": None if new is None else {"path": new, "type": "commit_file"},
     }
+
+
+def repository() -> dict[str, Any]:
+    """GET /2.0/repositories/{workspace}/{repo}."""
+    return {
+        "type": "repository",
+        "full_name": "streamstech/db-explorer",
+        "name": "db-explorer",
+        "description": "Explores databases. Carefully.",
+        "is_private": True,
+        "language": "python",
+        "size": 4_812_233,
+        "mainbranch": {"type": "branch", "name": "main"},
+        "created_on": "2025-03-11T08:02:19.000000+00:00",
+        "updated_on": "2026-08-21T11:02:47.000000+00:00",
+        "links": {"html": {"href": "https://bitbucket.org/streamstech/db-explorer"}},
+    }
+
+
+def directory() -> dict[str, Any]:
+    """GET /2.0/repositories/{workspace}/{repo}/src/{ref}/{path} for a directory."""
+    return {
+        "pagelen": 100,
+        "values": [
+            {
+                "path": "src/app/retry.py",
+                "type": "commit_file",
+                "size": 2_104,
+                "mimetype": None,
+                "commit": {"hash": BASIS},
+            },
+            {
+                "path": "src/app/handlers",
+                "type": "commit_directory",
+                "commit": {"hash": BASIS},
+            },
+            {
+                "path": "src/app/__init__.py",
+                "type": "commit_file",
+                "size": 0,
+                "mimetype": None,
+                "commit": {"hash": BASIS},
+            },
+        ],
+    }
+
+
+def commits() -> dict[str, Any]:
+    """GET .../commits/{ref} and .../pullrequests/{id}/commits share this shape."""
+    return {
+        "pagelen": 50,
+        "values": [
+            {
+                "type": "commit",
+                "hash": BASIS,
+                "date": "2026-08-21T11:02:47+00:00",
+                "message": "Retry the upstream call\n\nThe timeout was not the problem.",
+                "author": {
+                    "raw": "Anwar Hossain <anwar@streamstech.com>",
+                    "user": {"display_name": "Anwar Hossain", "account_id": "5f8a1b2c"},
+                },
+                "parents": [{"hash": OLD_BASIS}],
+            },
+            {
+                "type": "commit",
+                "hash": OLD_BASIS,
+                "date": "2026-08-20T09:14:22+00:00",
+                "message": "Pool the session",
+                "author": {"raw": "someone@example.com"},
+                "parents": [],
+            },
+        ],
+    }
+
+
+def search(*, full_name: str = "streamstech/db-explorer") -> dict[str, Any]:
+    """GET /2.0/workspaces/{workspace}/search/code."""
+    return {
+        "size": 1,
+        "page": 1,
+        "pagelen": 25,
+        "values": [
+            {
+                "type": "code_search_result",
+                "content_match_count": 1,
+                "content_matches": [
+                    {
+                        "lines": [
+                            {
+                                "line": 88,
+                                "segments": [
+                                    {"text": "    return "},
+                                    {"text": "call_upstream", "match": True},
+                                    {"text": "(payload)"},
+                                ],
+                            }
+                        ]
+                    }
+                ],
+                "path_matches": [],
+                "file": {
+                    "path": "src/app/handlers/orders.py",
+                    "type": "commit_file",
+                    "links": {
+                        "self": {
+                            "href": (
+                                f"https://api.bitbucket.org/2.0/repositories/{full_name}"
+                                f"/src/{BASIS}/src/app/handlers/orders.py"
+                            )
+                        }
+                    },
+                },
+            }
+        ],
+    }

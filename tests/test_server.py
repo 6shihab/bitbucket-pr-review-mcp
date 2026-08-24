@@ -21,6 +21,8 @@ from bitbucket_pr_review_mcp.settings import Settings
 from . import fixtures
 
 PR = "https://bitbucket.org/streamstech/db-explorer/pull-requests/42"
+ALLOWED = "streamstech/db-explorer"
+FORBIDDEN = "streamstech/secret-payroll"
 
 
 def text_of(result) -> str:
@@ -272,3 +274,96 @@ class TestTheDiffTools:
 
         assert UNTRUSTED_OPEN in text_of(result)
         assert UNTRUSTED_CLOSE in text_of(result)
+
+
+class TestTheRepositoryTools:
+    """Wiring for ADR-0006's widened read surface. The reach is tested a layer down."""
+
+    async def test_all_five_are_registered(self, server):
+        names = [tool.name for tool in await server.list_tools()]
+
+        for name in [
+            "bitbucket_get_repository",
+            "bitbucket_get_file",
+            "bitbucket_get_directory",
+            "bitbucket_get_commits",
+            "bitbucket_search_code",
+        ]:
+            assert name in names
+
+    async def test_reading_a_file_returns_its_content(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, text="def call_upstream():\n    pass\n",
+                           headers={"content-type": "text/plain"})
+        )
+
+        result = await server.call_tool(
+            "bitbucket_get_file",
+            {"repository": ALLOWED, "path": "src/app/retry.py", "ref": fixtures.BASIS},
+        )
+
+        assert "call_upstream" in text_of(result)
+
+    async def test_a_repository_outside_the_allowlist_is_refused_before_the_network(
+        self, server, wire
+    ):
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_get_file",
+                {"repository": FORBIDDEN, "path": "wages.csv", "ref": fixtures.BASIS},
+            )
+
+        assert "allowlist" in str(caught.value).lower()
+        assert not wire.called
+
+    async def test_a_path_that_climbs_out_is_refused_before_the_network(self, server, wire):
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_get_file",
+                {"repository": ALLOWED, "path": "../../etc/passwd", "ref": fixtures.BASIS},
+            )
+
+        assert "repository root" in str(caught.value)
+        assert not wire.called
+
+    async def test_commits_needs_exactly_one_of_a_ref_or_a_pull_request(self, server, wire):
+        with pytest.raises(ToolError):
+            await server.call_tool("bitbucket_get_commits", {})
+
+        with pytest.raises(ToolError):
+            await server.call_tool(
+                "bitbucket_get_commits",
+                {"repository": ALLOWED, "ref": "main", "pull_request": PR},
+            )
+
+        assert not wire.called
+
+    async def test_commits_refuses_a_repository_that_is_not_the_pull_requests_own(
+        self, server, wire
+    ):
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_get_commits", {"repository": FORBIDDEN, "pull_request": PR}
+            )
+
+        assert "already names its repository" in str(caught.value)
+        assert not wire.called
+
+    async def test_search_refuses_a_query_that_carries_its_own_scope(self, server, wire):
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_search_code",
+                {"repository": ALLOWED, "query": "repo:secret-payroll password"},
+            )
+
+        assert "repository argument" in str(caught.value)
+        assert not wire.called
+
+    async def test_search_composes_the_filter_itself(self, server, wire):
+        wire.will_return(httpx.Response(200, json=fixtures.search()))
+
+        await server.call_tool(
+            "bitbucket_search_code", {"repository": ALLOWED, "query": "call_upstream"}
+        )
+
+        assert wire.last.url.params["search_query"] == "repo:db-explorer call_upstream"

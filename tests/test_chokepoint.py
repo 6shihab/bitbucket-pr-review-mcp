@@ -166,3 +166,40 @@ class TestCredentialHandling:
             await client.request("POST", f"{ALLOWED}/pullrequests/42/merge")
 
         assert "not-a-real-token" not in str(caught.value)
+
+
+class TestTheOneWorkspaceScopedEndpoint:
+    """Code search cannot be asked repository-scoped: Bitbucket has none. ADR-0006 pays
+    for that with two checks — the workspace here, the results in `search.py`."""
+
+    SEARCH = "/2.0/workspaces/streamstech/search/code"
+
+    async def test_permits_searching_a_workspace_the_allowlist_reaches(self, client, wire):
+        await client.request("GET", self.SEARCH, params={"search_query": "repo:db-explorer x"})
+
+        assert wire.called
+
+    async def test_refuses_a_workspace_the_allowlist_does_not_reach(self, client, wire):
+        with pytest.raises(Forbidden) as caught:
+            await client.request("GET", "/2.0/workspaces/someone-else/search/code")
+
+        assert "streamstech" in str(caught.value)
+        assert not wire.called
+
+    async def test_refuses_anything_else_under_workspaces(self, client, wire):
+        for path in [
+            "/2.0/workspaces/streamstech",
+            "/2.0/workspaces/streamstech/members",
+            "/2.0/workspaces/streamstech/search/code/../../projects",
+        ]:
+            with pytest.raises(Forbidden):
+                await client.request("GET", path)
+
+        assert not wire.called
+
+    async def test_a_workspace_may_not_be_written_to(self, client, wire):
+        for method in ["POST", "PUT", "DELETE"]:
+            with pytest.raises(Forbidden):
+                await client.request(method, self.SEARCH)
+
+        assert not wire.called

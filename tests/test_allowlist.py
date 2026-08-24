@@ -93,3 +93,32 @@ class TestConstruction:
     def test_cannot_be_built_empty(self):
         with pytest.raises(ConfigError):
             Allowlist.of([])
+
+
+class TestWorkspaces:
+    """Only code search asks this question, and only because Bitbucket's search endpoint
+    is workspace-scoped. Reaching a workspace is not permission to read what it returns."""
+
+    def test_it_names_the_workspaces_its_repositories_live_in(self):
+        allowlist = Allowlist.of(
+            [Repository("streamstech", "db-explorer"), Repository("jantrik", "admin-client")]
+        )
+
+        assert allowlist.workspaces() == frozenset({"streamstech", "jantrik"})
+
+    def test_a_workspace_holding_an_allowlisted_repository_is_reachable(self):
+        allowlist = Allowlist.of([Repository("streamstech", "db-explorer")])
+
+        assert allowlist.permits_workspace("streamstech")
+        assert allowlist.permits_workspace("STREAMSTECH"), "workspace names are not case-sensitive"
+
+    def test_any_other_workspace_is_not(self):
+        allowlist = Allowlist.of([Repository("streamstech", "db-explorer")])
+
+        assert not allowlist.permits_workspace("jantrik")
+
+    def test_reaching_the_workspace_is_not_reaching_its_other_repositories(self):
+        allowlist = Allowlist.of([Repository("streamstech", "db-explorer")])
+
+        assert allowlist.permits_workspace("streamstech")
+        assert not allowlist.permits(Repository("streamstech", "secret-payroll"))

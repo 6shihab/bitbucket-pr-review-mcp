@@ -1,0 +1,674 @@
+{
+  "values": [
+    {
+      "path": ".vscode",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_directory",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.vscode/"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.vscode/?format=meta"
+        }
+      }
+    },
+    {
+      "path": "src",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_directory",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/src/"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/src/?format=meta"
+        }
+      }
+    },
+    {
+      "path": ".dockerignore",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".dockerignore",
+      "size": 270,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.dockerignore"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.dockerignore?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.dockerignore"
+        }
+      }
+    },
+    {
+      "path": ".editorconfig",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".editorconfig",
+      "size": 274,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.editorconfig"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.editorconfig?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.editorconfig"
+        }
+      }
+    },
+    {
+      "path": ".eslintrc.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".eslintrc.json",
+      "size": 3056,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.eslintrc.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.eslintrc.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.eslintrc.json"
+        }
+      }
+    },
+    {
+      "path": ".gitignore",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".gitignore",
+      "size": 759,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.gitignore"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.gitignore?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.gitignore"
+        }
+      }
+    },
+    {
+      "path": ".npmrc",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".npmrc",
+      "size": 81,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.npmrc"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.npmrc?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.npmrc"
+        }
+      }
+    },
+    {
+      "path": ".nvmrc",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": ".nvmrc",
+      "size": 3,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.nvmrc"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/.nvmrc?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/.nvmrc"
+        }
+      }
+    },
+    {
+      "path": "CREDITS",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "CREDITS",
+      "size": 4252,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/CREDITS"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/CREDITS?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/CREDITS"
+        }
+      }
+    },
+    {
+      "path": "Dockerfile",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "Dockerfile",
+      "size": 2009,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/Dockerfile"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/Dockerfile?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/Dockerfile"
+        }
+      }
+    },
+    {
+      "path": "LICENSE.md",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "LICENSE.md",
+      "size": 277,
+      "mimetype": "text/markdown",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/LICENSE.md"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/LICENSE.md?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/LICENSE.md"
+        }
+      }
+    },
+    {
+      "path": "README.md",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "README.md",
+      "size": 1094,
+      "mimetype": "text/markdown",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/README.md"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/README.md?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/README.md"
+        }
+      }
+    },
+    {
+      "path": "angular.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "angular.json",
+      "size": 8062,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/angular.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/angular.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/angular.json"
+        }
+      }
+    },
+    {
+      "path": "bitbucket-pipelines.yml",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "bitbucket-pipelines.yml",
+      "size": 3658,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/bitbucket-pipelines.yml"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/bitbucket-pipelines.yml?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/bitbucket-pipelines.yml"
+        }
+      }
+    },
+    {
+      "path": "karma.conf.js",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "karma.conf.js",
+      "size": 1761,
+      "mimetype": "text/javascript",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/karma.conf.js"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/karma.conf.js?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/karma.conf.js"
+        }
+      }
+    },
+    {
+      "path": "nginx.conf",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "nginx.conf",
+      "size": 317,
+      "mimetype": null,
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/nginx.conf"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/nginx.conf?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/nginx.conf"
+        }
+      }
+    },
+    {
+      "path": "package.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "package.json",
+      "size": 6041,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/package.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/package.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/package.json"
+        }
+      }
+    },
+    {
+      "path": "tailwind.config.js",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "tailwind.config.js",
+      "size": 9451,
+      "mimetype": "text/javascript",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tailwind.config.js"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tailwind.config.js?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/tailwind.config.js"
+        }
+      }
+    },
+    {
+      "path": "transloco.config.js",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "transloco.config.js",
+      "size": 67,
+      "mimetype": "text/javascript",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/transloco.config.js"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/transloco.config.js?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/transloco.config.js"
+        }
+      }
+    },
+    {
+      "path": "tsconfig.app.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "tsconfig.app.json",
+      "size": 321,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.app.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.app.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.app.json"
+        }
+      }
+    },
+    {
+      "path": "tsconfig.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "tsconfig.json",
+      "size": 543,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.json"
+        }
+      }
+    },
+    {
+      "path": "tsconfig.spec.json",
+      "commit": {
+        "hash": "f90a2239dbc196753158032bec70e4bed06d842b",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/commit/f90a2239dbc196753158032bec70e4bed06d842b"
+          },
+          "html": {
+            "href": "https://bitbucket.org/jantrik/admin-client/commits/f90a2239dbc196753158032bec70e4bed06d842b"
+          }
+        },
+        "type": "commit"
+      },
+      "type": "commit_file",
+      "attributes": [],
+      "escaped_path": "tsconfig.spec.json",
+      "size": 381,
+      "mimetype": "application/json",
+      "links": {
+        "self": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.spec.json"
+        },
+        "meta": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.spec.json?format=meta"
+        },
+        "history": {
+          "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/filehistory/f90a2239dbc196753158032bec70e4bed06d842b/tsconfig.spec.json"
+        }
+      }
+    }
+  ],
+  "pagelen": 100,
+  "page": 1
+}

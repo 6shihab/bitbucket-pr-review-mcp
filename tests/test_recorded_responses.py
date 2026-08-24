@@ -21,9 +21,13 @@ from pathlib import Path
 import pytest
 
 from bitbucket_pr_review_mcp.changes import read_changed_file
+from bitbucket_pr_review_mcp.commits import read_commit
 from bitbucket_pr_review_mcp.diffs import parse_diff
 from bitbucket_pr_review_mcp.pullrequests import read_pull_request
-from bitbucket_pr_review_mcp.references import PullRequestRef
+from bitbucket_pr_review_mcp.references import PullRequestRef, Repository
+from bitbucket_pr_review_mcp.repositories import read_repository
+from bitbucket_pr_review_mcp.search import repository_of
+from bitbucket_pr_review_mcp.source import read_entry
 
 RECORDED = Path(__file__).parent / "recorded"
 REF = PullRequestRef("jantrik", "admin-client", 2476)
@@ -102,3 +106,46 @@ class TestARecordedDiff:
         hunk = parse_diff(recorded("diff.patch"), "f90a2239dbc1").files[0].hunks[0]
 
         assert hunk.lines[0].startswith(" #")
+
+
+class TestRecordedRepositoryReads:
+    """Ticket 04's shapes, recorded on 2026-08-24 from the same repository.
+
+    `search.json` has its `segments[].text` replaced with REDACTED — every key and every
+    nesting level is exactly as Bitbucket sent it, but the matched lines were somebody's
+    private source and this repository is not where they belong. The structure is what
+    these tests are for; the text is not.
+    """
+
+    def test_repository_metadata_carries_the_default_branch(self):
+        found = read_repository(Repository("jantrik", "admin-client"), recorded("repository.json"))
+
+        assert found.default_branch == "dev", "not every repository calls it main"
+        assert found.is_private
+        assert found.language == "typescript"
+
+    def test_a_directory_listing_distinguishes_files_from_directories(self):
+        entries = [read_entry(value) for value in recorded("directory.json")["values"]]
+
+        assert any(entry.is_directory for entry in entries)
+        assert any(not entry.is_directory and entry.size for entry in entries)
+
+    def test_a_commit_reads_its_author_and_subject(self):
+        commit = read_commit(recorded("commits.json")["values"][0])
+
+        assert len(commit.hash) == 40, "commits/ spells hashes in full, unlike the pull request"
+        assert commit.author and commit.subject
+
+    def test_a_search_result_states_its_origin_only_in_the_file_link(self):
+        """The field the allowlist backstop reads. There is no repository field at all."""
+        value = recorded("search.json")["values"][0]
+
+        assert "repository" not in (value.get("file") or {}).get("commit", {})
+        assert "/2.0/repositories/jantrik/admin-client/src/" in value["file"]["links"]["self"][
+            "href"
+        ]
+
+    def test_the_origin_reader_finds_that_repository(self):
+        value = recorded("search.json")["values"][0]
+
+        assert repository_of(value) == Repository("jantrik", "admin-client")
