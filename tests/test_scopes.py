@@ -6,29 +6,41 @@ import pytest
 
 from bitbucket_pr_review_mcp.scopes import review_scopes
 
+GOOD_SCOPES = (
+    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+)
+
 
 def verdict(header):
     return review_scopes(header)
 
 
 class TestAGoodToken:
-    def test_the_granular_pair_is_acceptable_and_complete(self):
-        result = verdict("read:repository:bitbucket, write:pullrequest:bitbucket")
+    def test_the_granular_trio_is_acceptable_and_complete(self):
+        result = verdict(GOOD_SCOPES)
 
         assert result.acceptable and result.complete and result.verified
 
     def test_the_older_app_password_spelling_is_accepted_too(self):
-        result = verdict("repository, pullrequest:write")
+        result = verdict("account, repository, pullrequest:write")
 
         assert result.acceptable and result.complete
 
     def test_extra_read_only_scopes_are_tolerated(self):
-        result = verdict(
-            "read:account, read:repository:bitbucket, read:user:bitbucket, "
-            "write:pullrequest:bitbucket"
-        )
+        result = verdict(f"{GOOD_SCOPES}, read:account, read:workspace:bitbucket")
 
         assert result.acceptable
+
+
+class TestATokenWithoutTheUserScope:
+    """The one a real token was missing: Bitbucket answers /2.0/user with 403, so the
+    server cannot say who it posts as or recognise its own comments (ticket 05)."""
+
+    def test_it_is_incomplete_and_says_which_scope_to_add(self):
+        result = verdict("read:repository:bitbucket, write:pullrequest:bitbucket")
+
+        assert not result.complete
+        assert "read:user:bitbucket" in result.shortfall()
 
 
 class TestATokenThatIsTooPowerful:
@@ -44,27 +56,27 @@ class TestATokenThatIsTooPowerful:
         ],
     )
     def test_anything_beyond_pull_request_writing_is_excessive(self, scope):
-        result = verdict(f"read:repository:bitbucket, write:pullrequest:bitbucket, {scope}")
+        result = verdict(f"{GOOD_SCOPES}, {scope}")
 
         assert not result.acceptable
         assert scope in result.excessive
         assert scope in result.refusal()
 
     def test_the_refusal_names_the_scopes_to_grant_instead(self):
-        result = verdict("read:repository:bitbucket, write:pullrequest:bitbucket, admin:repository")
+        result = verdict(f"{GOOD_SCOPES}, admin:repository")
 
         assert "write:pullrequest:bitbucket" in result.refusal()
         assert "id.atlassian.com" in result.refusal()
 
     def test_an_unrecognised_scope_fails_closed(self):
-        result = verdict("read:repository:bitbucket, write:pullrequest:bitbucket, teleport:all")
+        result = verdict(f"{GOOD_SCOPES}, teleport:all")
 
         assert not result.acceptable
 
 
 class TestATokenThatIsTooWeak:
     def test_a_read_only_token_is_incomplete(self):
-        result = verdict("read:repository:bitbucket")
+        result = verdict("read:user:bitbucket, read:repository:bitbucket")
 
         assert result.acceptable
         assert not result.complete

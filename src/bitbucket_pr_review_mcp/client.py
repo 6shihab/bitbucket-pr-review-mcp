@@ -18,6 +18,8 @@ from loguru import logger
 
 from .credentials import Credential
 from .guard import Forbidden, assert_permitted
+from .scopes import REQUIRED as REQUIRED_SCOPES
+from .scopes import TOKEN_PAGE
 from .settings import Allowlist
 
 __all__ = ["BitbucketClient", "BitbucketError", "Forbidden", "NotFound", "Unauthorized"]
@@ -63,7 +65,7 @@ class BitbucketClient:
         json: Any | None = None,
     ) -> httpx.Response:
         """Issue one request, or refuse it before anything leaves the process."""
-        return self._checked(await self._send(method, path, params=params, json=json))
+        return self._checked(await self._sent(method, path, params=params, json=json))
 
     async def get_json(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         response = await self.request("GET", path, params=params)
@@ -95,23 +97,41 @@ class BitbucketClient:
         return values, True
 
     async def get_text(self, path: str, *, params: dict[str, Any] | None = None) -> str:
-        """GET something that is not JSON — a diff, a raw file.
+        """GET something that is not JSON — a diff, a raw file."""
+        return self._checked(await self._sent("GET", path, params=params, accept="text/plain")).text
 
-        Bitbucket answers the diff endpoints with a redirect to the same host, so one
-        hop is followed here rather than by httpx: the redirect target goes back through
-        `assert_permitted` (ADR-0002), which a transport-level redirect would skip.
+    async def _sent(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict[str, Any] | None = None,
+        json: Any | None = None,
+        accept: str = "application/json",
+    ) -> httpx.Response:
+        """Send, following Bitbucket's redirects — and re-guarding every hop.
+
+        Both `/diff` and `/diffstat` answer with a 302 to a commit-spec URL, so a client
+        that does not follow redirects cannot read a real pull request at all. The hops
+        are followed here rather than in the transport because `follow_redirects=True`
+        would send the second request without passing `assert_permitted`, and a
+        chokepoint that a redirect walks around is not a chokepoint (ADR-0002).
+
+        Only GET is followed. A redirected write is not something this server should
+        guess the intent of; it surfaces as an error instead.
         """
-        response = await self._send("GET", path, accept="text/plain")
+        response = await self._send(method, path, params=params, json=json, accept=accept)
+        if method.upper() != "GET":
+            return response
 
         for _ in range(MAX_REDIRECTS):
-            if not response.is_redirect:
-                break
-            location = response.headers.get("location", "")
+            location = response.headers.get("location", "") if response.is_redirect else ""
             if not location:
-                break
-            response = await self._send("GET", location, accept="text/plain")
+                return response
+            # The Location carries its own query; passing ours again would double it.
+            response = await self._send("GET", location, accept=accept)
 
-        return self._checked(response).text
+        return response
 
     async def _send(
         self,
@@ -151,10 +171,7 @@ class BitbucketClient:
                 "returns exactly this error with nothing useful in the body."
             )
         if response.status_code == 403:
-            raise BitbucketError(
-                f"Bitbucket refused {target}. The token is probably missing a scope: this "
-                "server needs repository read and pull request write."
-            )
+            raise BitbucketError(f"Bitbucket refused {target}. {_scope_shortfall(response)}")
         if response.status_code == 404:
             raise NotFound(
                 f"Bitbucket has no {target}. A private repository the credential cannot see "
@@ -163,6 +180,34 @@ class BitbucketClient:
 
         logger.debug("Bitbucket returned {} for {}", response.status_code, target)
         raise BitbucketError(f"Bitbucket returned {response.status_code} for {target}.")
+
+
+def _scope_shortfall(response: httpx.Response) -> str:
+    """Bitbucket says which scope a 403 wanted. Repeat it rather than guessing at it.
+
+    The body carries `error.detail.required` and `granted`, which is the difference
+    between "check your token's scopes" and "add read:user:bitbucket" — and only the
+    second one a Reviewer can act on without going round the loop again.
+    """
+    try:
+        detail = (response.json().get("error") or {}).get("detail") or {}
+        required = [str(scope) for scope in detail.get("required") or []]
+        granted = [str(scope) for scope in detail.get("granted") or []]
+    except ValueError:
+        required, granted = [], []
+
+    if not required:
+        return (
+            "The token is probably missing a scope: this server needs "
+            f"{', '.join(REQUIRED_SCOPES)}."
+        )
+
+    missing = [scope for scope in required if scope not in granted] or required
+    return (
+        f"The token is missing {', '.join(missing)}. Create a new token at "
+        f"{TOKEN_PAGE} granting {', '.join(REQUIRED_SCOPES)}, then run "
+        "`uv run bb-pr-mcp --setup` to connect it."
+    )
 
 
 def build_http_client(timeout_seconds: float) -> httpx.AsyncClient:

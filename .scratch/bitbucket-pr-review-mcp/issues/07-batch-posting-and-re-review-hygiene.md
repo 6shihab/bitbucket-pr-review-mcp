@@ -30,3 +30,14 @@ list is the worse outcome.
 - [ ] A single comment posts through the same tool without ceremony
 - [ ] An Inline Comment identical to an existing one at the same path and line is refused
 - [ ] Stale Inline Comments authored by this server are surfaced and marked, and are not deleted
+
+## Note from the first live run (2026-08-24)
+
+**The Review Basis is abbreviated.** `source.commit.hash` on the pull request payload
+comes back as twelve characters (`f90a2239dbc1`), while the same commit is spelled in
+full inside `links` and in the diffstat entries. Comparing a stored Basis against a
+freshly-read one with `==` will therefore refuse writes that should have been allowed,
+or — worse, if the spellings are ever swapped — allow one it should have refused. The
+comparison has to be prefix-aware in whichever direction is shorter, and the length has
+to be long enough to mean something. `tests/test_recorded_responses.py` pins the
+observed behaviour.

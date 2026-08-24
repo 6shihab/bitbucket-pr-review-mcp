@@ -17,7 +17,9 @@ from bitbucket_pr_review_mcp.settings import Settings
 
 from . import fixtures
 
-GOOD_SCOPES = "read:repository:bitbucket, write:pullrequest:bitbucket"
+GOOD_SCOPES = (
+    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+)
 
 
 def transport_for(wire):

@@ -25,7 +25,7 @@ stopgap so a Reviewer can demo a working read before the credential system exist
 
 **Blocked by:** None — can start immediately.
 
-**Status:** done — except one criterion, noted below
+**Status:** done
 
 - [x] `bitbucket_get_pull_request` accepts a full Bitbucket URL and returns title, state, author, both branch names, description and Review Basis
 - [x] The same tool accepts the workspace/repo/id shorthand and resolves to the same Pull Request
@@ -36,10 +36,13 @@ stopgap so a Reviewer can demo a working read before the credential system exist
 - [x] Every safety property above is exercised as a plain function call against an injected transport, with no MCP client and no network
 - [x] Nothing is ever written to stdout except MCP protocol messages
 - [x] The check flag reports configuration and credential status and exits with a meaningful shell status
-- [ ] Response fixtures are captured from real Bitbucket responses, not hand-authored
-      **NOT MET.** The fixtures are modelled on Bitbucket's documented response shapes,
-      not recorded from a live API — capturing real ones needs a credential and a real
-      pull request, which this ticket has no way to obtain. Ticket 02 brings the
-      credential; the first real capture should replace the bodies in the test fixtures,
-      keeping field names and nesting honest. Until then every test at the transport seam
-      is only as trustworthy as an assumption about the API.
+- [x] Response fixtures are captured from real Bitbucket responses, not hand-authored
+      **Met during ticket 03.** `tests/recorded/` holds a pull request, a diffstat and a
+      diff captured from `jantrik/admin-client` pull request 2476 on 2026-08-24, and
+      `test_recorded_responses.py` runs the production readers over them. The synthetic
+      fixtures stay, because no single real pull request has a rename, a binary file and
+      a lockfile in it — but their shapes are now checked rather than assumed.
+
+      The capture corrected two assumptions immediately, which is the whole argument for
+      doing it: `/diffstat` redirects (the client only followed redirects on `/diff`),
+      and `source.commit.hash` is abbreviated to twelve characters.

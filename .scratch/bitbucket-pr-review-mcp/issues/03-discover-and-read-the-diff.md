@@ -32,11 +32,16 @@ written by whoever opened it.
 
 ## Notes
 
-**The diff endpoint redirects.** Bitbucket answers `/pullrequests/{id}/diff` with a 302 to
-the commit-spec diff URL. The transport is deliberately built with `follow_redirects=False`
-(ticket 01), so the hop is followed in `client.get_text` and the target goes back through
-`assert_permitted` — a transport-level redirect would have skipped the chokepoint, which
-is the one thing ADR-0002 cannot afford. A redirect off `api.bitbucket.org` is refused.
+**The diff endpoints redirect — both of them.** Bitbucket answers `/pullrequests/{id}/diff`
+*and* `/pullrequests/{id}/diffstat` with a 302 to a commit-spec URL. The transport is
+deliberately built with `follow_redirects=False` (ticket 01), so hops are followed in
+`client._sent` and each target goes back through `assert_permitted` — a transport-level
+redirect would have skipped the chokepoint, which is the one thing ADR-0002 cannot
+afford. A redirect off `api.bitbucket.org` is refused, and only GET is followed.
+
+This was found by running against a real pull request, not by a test: the first version
+followed redirects only on `get_text`, so the manifest tool worked perfectly against
+hand-written fixtures and failed on contact with Bitbucket.
 
 **Hunk ranges are parsed now, not in ticket 06.** Ticket 06 validates Anchors against the
 hunks; reading `@@` headers here rather than re-parsing there keeps one parser.

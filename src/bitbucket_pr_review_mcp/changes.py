@@ -85,8 +85,8 @@ class ChangedFile:
         name = f"`{self.path}`"
         if self.is_rename:
             name += f" (was `{self.old_path}`)"
-        flags = ", ".join(self.flags) or "—"
-        return f"| {name} | {self.status} | +{self.added} / −{self.removed} | {flags} |"
+        flags = ", ".join(self.flags) or "none"
+        return f"| {name} | {self.status} | +{self.added} / -{self.removed} | {flags} |"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +111,7 @@ class Changes:
                 [
                     ("Review Basis", f"`{self.basis}`"),
                     ("Files changed", str(self.total)),
-                    ("Added / removed", f"+{self._added()} / −{self._removed()}"),
+                    ("Added / removed", f"+{self._added()} / -{self._removed()}"),
                     ("Flagged", str(sum(1 for file in self.files if file.flags))),
                 ]
             ),
@@ -162,7 +162,7 @@ async def fetch_changes(
 ) -> Changes:
     """The diffstat manifest, straight from Bitbucket's own endpoint."""
     values, more_remain = await client.get_pages(changes_path(ref), params={"pagelen": 100})
-    files = [_read(entry) for entry in values if isinstance(entry, dict)]
+    files = [read_changed_file(entry) for entry in values if isinstance(entry, dict)]
 
     return Changes(
         ref=ref,
@@ -200,7 +200,8 @@ def _under_generated_directory(lowered: str) -> bool:
     return any(part in GENERATED_DIRECTORIES for part in PurePosixPath(lowered).parts[:-1])
 
 
-def _read(entry: dict) -> ChangedFile:
+def read_changed_file(entry: dict) -> ChangedFile:
+    """One diffstat entry. Bitbucket sends no binary flag, hence `classify`."""
     old = (entry.get("old") or {}).get("path")
     new = (entry.get("new") or {}).get("path")
     path = new or old or "(unknown)"

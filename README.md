@@ -24,6 +24,8 @@ uv run bb-pr-mcp --check     # confirms configuration, credential and scopes
 Create the token at <https://id.atlassian.com/manage-profile/security/api-tokens> with
 exactly these scopes:
 
+- `read:user:bitbucket` — so the server can show you whose account it connected, and
+  later recognise its own comments rather than stacking duplicates
 - `read:repository:bitbucket`
 - `write:pullrequest:bitbucket`
 

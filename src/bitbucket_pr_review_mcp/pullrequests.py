@@ -67,14 +67,15 @@ class PullRequest:
 
 async def fetch_pull_request(client: BitbucketClient, ref: PullRequestRef) -> PullRequest:
     payload = await client.get_json(pull_request_path(ref))
-    return _read(ref, payload)
+    return read_pull_request(ref, payload)
 
 
 def pull_request_path(ref: PullRequestRef) -> str:
     return f"/2.0/repositories/{ref.workspace}/{ref.repo}/pullrequests/{ref.pull_request_id}"
 
 
-def _read(ref: PullRequestRef, payload: dict[str, Any]) -> PullRequest:
+def read_pull_request(ref: PullRequestRef, payload: dict[str, Any]) -> PullRequest:
+    """Read Bitbucket's pull request shape. Extra keys are ignored, missing ones defaulted."""
     source = payload.get("source") or {}
     destination = payload.get("destination") or {}
 

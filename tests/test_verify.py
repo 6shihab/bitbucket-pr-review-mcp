@@ -5,13 +5,15 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from bitbucket_pr_review_mcp.client import Unauthorized
+from bitbucket_pr_review_mcp.client import BitbucketError, Unauthorized
 from bitbucket_pr_review_mcp.credentials import Credential, CredentialError
 from bitbucket_pr_review_mcp.verify import verify_credential
 
 from . import fixtures
 
-GOOD_SCOPES = "read:repository:bitbucket, write:pullrequest:bitbucket"
+GOOD_SCOPES = (
+    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+)
 
 
 async def verify(wire, allowlist, credential):
@@ -75,3 +77,41 @@ class TestVerifying:
             await verify(wire, allowlist, Credential(email="anwar", token="t"))
 
         assert not wire.called
+
+
+class TestATokenMissingTheUserScope:
+    """The failure a real token hit: repository and pull request scopes granted, the
+    user scope not, so /2.0/user answers 403 and nothing can say who we post as."""
+
+    async def test_the_error_names_the_scope_bitbucket_asked_for(self, wire, allowlist, credential):
+        wire.will_return(
+            httpx.Response(
+                403,
+                json={
+                    "type": "error",
+                    "error": {
+                        "message": "Your credentials lack one or more required privilege scopes.",
+                        "detail": {
+                            "required": ["read:user:bitbucket"],
+                            "granted": ["read:repository:bitbucket", "read:pullrequest:bitbucket"],
+                        },
+                    },
+                },
+            )
+        )
+
+        with pytest.raises(BitbucketError) as caught:
+            await verify(wire, allowlist, credential)
+
+        assert "read:user:bitbucket" in str(caught.value)
+        assert "--setup" in str(caught.value)
+
+    async def test_a_403_without_detail_still_names_what_is_needed(
+        self, wire, allowlist, credential
+    ):
+        wire.will_return(httpx.Response(403, text="nope"))
+
+        with pytest.raises(BitbucketError) as caught:
+            await verify(wire, allowlist, credential)
+
+        assert "write:pullrequest:bitbucket" in str(caught.value)

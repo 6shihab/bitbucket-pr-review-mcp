@@ -1,0 +1,11 @@
+diff --git a/README.md b/README.md
+index 130d9b1c0..2ee3cf67a 100644
+--- a/README.md
++++ b/README.md
+@@ -1,5 +1,5 @@
+ # Fuse - Admin template and Starter project for Angular
+-
++# New Line
+ This project was generated with [Angular CLI](https://github.com/angular/angular-cli)
+ 
+ ## Development server

@@ -1,19 +1,19 @@
 """Bitbucket response fixtures.
 
-NOTE: these are modelled on Bitbucket Cloud's documented response shapes, not captured
-from a live API — capturing real responses needs a credential and a real pull request,
-which ticket 01 could not do. Ticket 02 brings the credential; the first real capture
-should replace these bodies, keeping the field names and nesting honest. See the
-"Fixtures" note in the spec for why this matters: hand-written fixtures agree with our
-misunderstandings, recorded ones do not.
+These are synthetic — a pull request with a rename, a binary file and a lockfile, which
+no single real pull request conveniently has. Their **shapes** are not guesses any more:
+every field name and nesting here is checked against recorded responses in
+`tests/recorded/`, exercised by `test_recorded_responses.py`. Two things that recording
+corrected are reflected below — the Review Basis is Bitbucket's abbreviated twelve
+characters rather than a full hash, and the diffstat entry carries no binary flag.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-BASIS = "9f2c4a1b7e5d3c8a6b4f2e0d9c7b5a3f1e8d6c4b"
-OLD_BASIS = "1111111111111111111111111111111111111111"
+BASIS = "9f2c4a1b7e5d"
+OLD_BASIS = "111111111111"
 
 
 def pull_request(

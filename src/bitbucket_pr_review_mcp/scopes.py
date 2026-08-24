@@ -26,10 +26,21 @@ TOKEN_PAGE = "https://id.atlassian.com/manage-profile/security/api-tokens"
 
 # What this server needs. Either spelling of each, since Bitbucket accepts both the
 # granular Atlassian scopes and the older app-password names on existing credentials.
+#
+# The user scope is easy to think optional and is not: `GET /2.0/user` is how setup shows
+# the Reviewer whose account they just connected, and how the server later recognises its
+# own comments — without it a re-review stacks duplicates instead of updating (ticket 05).
+# Bitbucket refuses that endpoint with a 403 rather than an empty answer, so a token
+# without it fails at the first tool call rather than degrading.
+USER_READ = frozenset({"read:user:bitbucket", "account"})
 REPOSITORY_READ = frozenset({"read:repository:bitbucket", "repository"})
 PULL_REQUEST_WRITE = frozenset({"write:pullrequest:bitbucket", "pullrequest:write"})
 
-REQUIRED = ("read:repository:bitbucket", "write:pullrequest:bitbucket")
+REQUIRED = (
+    "read:user:bitbucket",
+    "read:repository:bitbucket",
+    "write:pullrequest:bitbucket",
+)
 
 # Read-only scopes we tolerate alongside the required pair: they widen what can be read,
 # never what can be changed, and Atlassian grants some of them implicitly.
@@ -82,9 +93,8 @@ def review_scopes(header: str | None) -> ScopeVerdict:
 
     missing = tuple(
         name
-        for name, alternatives in (
-            (REQUIRED[0], REPOSITORY_READ),
-            (REQUIRED[1], PULL_REQUEST_WRITE),
+        for name, alternatives in zip(
+            REQUIRED, (USER_READ, REPOSITORY_READ, PULL_REQUEST_WRITE), strict=True
         )
         if not (alternatives & set(granted))
     )

@@ -1,0 +1,33 @@
+{
+  "values": [
+    {
+      "type": "diffstat",
+      "lines_added": 1,
+      "lines_removed": 1,
+      "status": "modified",
+      "old": {
+        "path": "README.md",
+        "type": "commit_file",
+        "escaped_path": "README.md",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/7f933f3a4d2a97e651af97e8bc4c016625d75a57/README.md"
+          }
+        }
+      },
+      "new": {
+        "path": "README.md",
+        "type": "commit_file",
+        "escaped_path": "README.md",
+        "links": {
+          "self": {
+            "href": "https://api.bitbucket.org/2.0/repositories/jantrik/admin-client/src/f90a2239dbc196753158032bec70e4bed06d842b/README.md"
+          }
+        }
+      }
+    }
+  ],
+  "pagelen": 100,
+  "size": 1,
+  "page": 1
+}

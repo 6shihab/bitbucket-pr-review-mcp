@@ -19,7 +19,9 @@ from bitbucket_pr_review_mcp.scopes import review_scopes
 from bitbucket_pr_review_mcp.setup_listener import SetupListener
 from bitbucket_pr_review_mcp.verify import Identity
 
-GOOD_SCOPES = "read:repository:bitbucket, write:pullrequest:bitbucket"
+GOOD_SCOPES = (
+    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+)
 
 
 async def verifier(credential):
