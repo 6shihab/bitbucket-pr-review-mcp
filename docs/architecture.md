@@ -288,6 +288,37 @@ The allowlist is mounted read-only rather than baked in: it names the repositori
 server may touch, and that list belongs to whoever runs the image. The image itself
 carries only code — no writable state, no root, no capabilities.
 
+## The shared deployment, and the vault it needs
+
+A second deployment shape is being built: one server, several people, reached over HTTP
+instead of stdio. Only its foundation exists so far — `vault.py`, the store that holds
+other people's credentials — and it is worth being exact about what that changes.
+
+A keychain holds one credential, for the person running the process. It cannot hold a
+colleague's token on a server that colleague has never logged into, so the shared
+deployment stores credentials itself: one SQLite file, one row per enrolled person, each
+row sealed with AES-GCM under a key supplied at startup and never written beside the
+data. That is a downgrade from ADR-0003, taken deliberately and recorded in
+[ADR-0008](adr/0008-the-shared-server-holds-other-peoples-credentials.md).
+
+Two properties are worth the cryptography, and no more than two. Somebody who gets the
+file and not the key learns how many people are enrolled and their opaque ids, and
+nothing else. And **the person's id is authenticated as associated data**, so a row
+cannot be read as somebody else's: a bug in a lookup fails to decrypt rather than quietly
+handing back a colleague's token, which on a server that posts comments under people's
+names is the failure worth spending a cipher on.
+
+Everything else is unchanged by encryption and said so in
+[the threat model](threat-model-shared-store.md), adversary by adversary. An operator
+with shell, or anything that compromises this process, gets every token at once. What
+bounds that is branch restrictions on the repositories and short token expiries — both
+outside this code, which is the point of writing it down.
+
+`PersonalCredentials` is why nothing above the store had to change: it is one person's
+slice of the vault, shaped like the keychain, so `CredentialGate` works over either
+without knowing which it holds. Which person it means is decided when it is built, from
+the authenticated session — never from a tool argument.
+
 ## Tests
 
 The seam is the transport and nothing else. Every test builds a real `BitbucketClient`
@@ -343,3 +374,4 @@ and were corrected only by running against the real API.
 | [0005](adr/0005-tool-surface.md) — eleven tools | `server.py`; one string names a pull request, parsed in `references.py`; the batch in `review.py` |
 | [0006](adr/0006-the-read-surface-is-wider-than-the-pull-request.md) — wider read surface | `source.py`, `commits.py`, `repositories.py`, and `search.py`'s two extra guards |
 | [0007](adr/0007-the-container-is-given-its-credential.md) — a container is given its credential | `environment.py`, and the `Dockerfile` that has nowhere to store one |
+| [0008](adr/0008-the-shared-server-holds-other-peoples-credentials.md) — the shared server holds other people's credentials | `vault.py`: AES-GCM per row, the person's id as associated data, and a key it refuses to invent |

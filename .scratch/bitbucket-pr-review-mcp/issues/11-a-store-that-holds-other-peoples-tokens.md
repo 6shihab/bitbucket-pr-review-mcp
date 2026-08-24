@@ -12,18 +12,34 @@ reverses it for the shared deployment only. The per-device server keeps its keyc
 The honest framing, and it belongs in the ADR: this is the ticket that turns the project
 into a credential vault. Everything else is plumbing around it.
 
-**Blocked by:** 10 — a credential is stored against a person.
+**Blocked by:** 10 — a credential is stored against a person. Built ahead of it against an
+opaque enrolment id, because how a person is authenticated does not change how their
+credential is stored, and the store is what every later ticket needs.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The threat model is written first and covers: the database file alone; the file plus
+- [x] The threat model is written first and covers: the database file alone; the file plus
       a copy of the environment; an operator with shell access; a compromise of the
       running process; and a backup. For each, exactly what an attacker gets
-- [ ] Each credential is encrypted with an AEAD, under a key supplied at startup
-- [ ] The key never enters the database, the logs, or an error message
-- [ ] The server refuses to start if the key is missing, rather than generating one
-- [ ] A stored credential can be read back, re-encrypted under a new key, and deleted
-- [ ] Two people's credentials are never interchangeable, even by a bug in one query
-- [ ] Storage is tested against a real database file, not a fake
-- [ ] Nothing in the store's public surface hands a token to anything but the HTTP client
-      that uses it
+      — `docs/threat-model-shared-store.md`, seven adversaries
+- [x] Each credential is encrypted with an AEAD, under a key supplied at startup
+      — AES-GCM, key from `BB_MCP_VAULT_KEY` or `BB_MCP_VAULT_KEY_FILE`
+- [x] The key never enters the database, the logs, or an error message
+- [x] The server refuses to start if the key is missing, rather than generating one
+      — `VaultKey.required()`, and the refusal says why it will not invent one
+- [x] A stored credential can be read back, re-encrypted under a new key, and deleted
+      — `load`, `rotate`, `clear`; rotation re-seals every row and nobody re-enrols
+- [x] Two people's credentials are never interchangeable, even by a bug in one query
+      — the person's id is AEAD associated data; a row moved between people fails to
+      decrypt rather than being handed to the wrong person
+- [x] Storage is tested against a real database file, not a fake
+      — every test in `tests/test_vault.py` writes a real SQLite file, and three of them
+      open the raw bytes looking for the token
+- [x] Nothing in the store's public surface hands a token to anything but the HTTP client
+      that uses it — `PersonalCredentials` satisfies the existing `CredentialStore`
+      protocol, so `CredentialGate` works over vault or keychain unchanged
+
+**Left for later, deliberately:** the vault is not wired into a running server yet. Which
+person a session means is ticket 10's answer, and the HTTP transport that carries sessions
+is ticket 12. Nothing imports `vault.py` outside its tests, which is the correct amount of
+coupling until then.

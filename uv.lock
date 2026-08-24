@@ -71,6 +71,7 @@ name = "bitbucket-pr-review-mcp"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cryptography" },
     { name = "fastmcp" },
     { name = "httpx" },
     { name = "keyring" },
@@ -91,6 +92,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cryptography", specifier = ">=44" },
     { name = "fastmcp", specifier = ">=3.4.4,<4.0.0" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "keyring", specifier = ">=25.6" },

@@ -19,6 +19,7 @@ dependencies = [
     "fastmcp>=3.4.4,<4.0.0",
     "httpx>=0.28",
     "keyring>=25.6",
+    "cryptography>=44",
     "pydantic-settings>=2.6",
     "loguru>=0.7",
     "pyyaml>=6.0",

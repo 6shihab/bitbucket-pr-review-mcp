@@ -170,7 +170,7 @@ class TestTheContainer:
     """Docker collides with ADR-0003, so the documentation has to say how, not gloss it."""
 
     DOCKERFILE = (ROOT / "Dockerfile").read_text(encoding="utf-8")
-    COMPOSE = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    COMPOSE = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
     IGNORE = (ROOT / ".dockerignore").read_text(encoding="utf-8")
     GITIGNORE = (ROOT / ".gitignore").read_text(encoding="utf-8")
 

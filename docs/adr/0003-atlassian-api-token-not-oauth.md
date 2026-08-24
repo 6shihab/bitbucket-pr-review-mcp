@@ -24,6 +24,15 @@ start rather than silently downgrading. It carries a user-chosen expiry, so the
 server warns when that date is within a week instead of surfacing an unexplained 401
 mid-review.
 
+**The shared deployment does not keep this part.** A keychain holds one credential
+for the person running the process, which cannot hold a colleague's token on a server
+they have never logged into, so the shared server stores credentials in an encrypted
+file instead — a downgrade, taken deliberately and documented in
+[ADR-0008](0008-the-shared-server-holds-other-peoples-credentials.md) and
+[the threat model](../threat-model-shared-store.md). Everything else in this ADR still
+holds in both deployments: the credential is an API token, the username is the
+Atlassian email, and it is verified at entry.
+
 The Basic-auth username is the **Atlassian account email**. A Bitbucket username or
 the token's name returns 401 with nothing useful in the body, so credentials are
 verified against `GET /2.0/user` at entry and the returned display name shown back

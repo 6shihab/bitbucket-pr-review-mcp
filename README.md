@@ -211,7 +211,7 @@ docker run --rm \
 }
 ```
 
-`compose.yaml` writes the same flags down once: `docker compose run --rm
+`docker-compose.yaml` writes the same flags down once: `docker compose run --rm
 bitbucket-pr-review`, reading `.env.docker` (gitignored) from this directory.
 
 A few things worth knowing:
