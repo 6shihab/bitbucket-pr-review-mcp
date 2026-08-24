@@ -23,18 +23,46 @@ about layout and none about correctness; that boundary is the whole of ADR-0001.
 
 **Blocked by:** 03 (needs parsed diff hunks), 05 (needs comment reading for authorship).
 
-**Status:** ready-for-agent
+**Status:** done — one criterion still unverified against a live pull request
 
-- [ ] A Finding posts as an Inline Comment on the correct file and line, verified by reading it back
-- [ ] An Anchor on an added line, a removed line and a context line each land correctly
-- [ ] A multi-line range anchors to the whole block rather than one line within it
-- [ ] An Anchor not present in the diff is refused before anything is posted, with the nearest valid lines named
-- [ ] A post whose Review Basis no longer matches the Pull Request head is refused with an instruction to re-fetch
-- [ ] A posted comment that comes back orphaned is reported rather than silently accepted
-- [ ] Every posted comment carries the Attribution Footer naming it machine-generated and naming the Reviewer
-- [ ] No argument suppresses the Attribution Footer
-- [ ] Severity and category render consistently across Findings
-- [ ] The write chokepoint permits this POST and still refuses every other write shape
+- [x] A Finding posts as an Inline Comment on the correct file and line, verified by reading it back
+      Read back from Bitbucket's own record of the created comment, which is what the
+      POST returns. **Not yet done against a live pull request** — see below.
+- [x] An Anchor on an added line, a removed line and a context line each land correctly
+- [x] A multi-line range anchors to the whole block rather than one line within it
+      As far as the API allows: Bitbucket's `inline` object has no range, so the comment
+      attaches at the first line and the body names the block. Silently commenting on one
+      line of five would misrepresent what the Finding is about.
+- [x] An Anchor not present in the diff is refused before anything is posted, with the nearest valid lines named
+- [x] A post whose Review Basis no longer matches the Pull Request head is refused with an instruction to re-fetch
+- [x] A posted comment that comes back orphaned is reported rather than silently accepted
+- [x] Every posted comment carries the Attribution Footer naming it machine-generated and naming the Reviewer
+- [x] No argument suppresses the Attribution Footer
+- [x] Severity and category render consistently across Findings
+- [x] The write chokepoint permits this POST and still refuses every other write shape
+
+## Notes
+
+**The diff now carries an anchor gutter.** Ticket 03 rendered hunks verbatim, which left
+the Caller to work out that the fourth `+` in a hunk is line 16 — two counters advancing
+at different rates, which is exactly the arithmetic a language model gets wrong. The
+numbers were already being computed to validate Anchors, so `diff_markdown` shows them:
+
+    12    12 |      session = build_session()
+    13       | -    return session.post(UPSTREAM, json=payload)
+          13 | +    for attempt in range(RETRIES):
+
+The legend outside the fence says which column each side anchors by, and that the gutter
+is this server's while everything after the `|` is Bitbucket's.
+
+**`inline.to` is the new file, `inline.from` is the old one**, and the translation lives
+in exactly one function. There are tests asserting that the same number on two different
+sides produces two different anchors, because inverting these does not raise — it
+attaches a comment to real code that nobody is reviewing.
+
+**Still to verify live:** posting to a real pull request. The read path has been exercised
+against `jantrik/admin-client` 2476 throughout, but nothing has been written to it —
+writing to somebody's repository is not something to do without being asked.
 
 ## Note from the first live run (2026-08-24)
 

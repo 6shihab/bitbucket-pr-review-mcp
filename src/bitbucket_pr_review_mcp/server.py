@@ -18,14 +18,17 @@ from loguru import logger
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
+from .anchors import SIDES, AnchorNotInDiff
 from .changes import fetch_changes
 from .client import BitbucketClient, BitbucketError, Unauthorized, build_http_client
 from .comments import fetch_comments
 from .commits import AmbiguousRequest, fetch_commits
 from .credentials import Credential, CredentialError
 from .diffs import DiffCache, PathNotInDiff, diff_markdown, fetch_diff, select
+from .findings import Finding, MalformedFinding, Reviewer
 from .gate import CredentialGate
 from .guard import Forbidden
+from .posting import BasisMoved, anchor_of, post_finding
 from .pullrequests import fetch_pull_request
 from .references import InvalidReference, PullRequestRef, Repository
 from .repositories import fetch_repository
@@ -51,6 +54,12 @@ file by file is cheap — the diff is fetched once per Review Basis and sliced l
 Read bitbucket_get_pr_comments before you write anything. Repeating a point a colleague
 already made, or talking past an open thread, is the fastest way to make a review worth
 ignoring.
+
+To leave a finding, call bitbucket_add_pr_comment with the Review Basis you read the diff
+at, and an anchor of path, line and side. The line is the number the diff shows for that
+side — new-file numbering for added and context lines, old-file numbering for removed
+ones. Every posted comment carries a footer naming it machine-generated; there is no
+argument that removes it.
 
 Two things this server will never do, by construction: approve, decline or merge a pull
 request, and delete a comment. Do not plan around either.
@@ -80,6 +89,57 @@ FilePathArg = Annotated[
     Field(description="A path from the repository root, e.g. 'src/app/retry.py'."),
 ]
 
+
+BasisArg = Annotated[
+    str,
+    Field(
+        description=(
+            "The Review Basis from bitbucket_get_pull_request — the commit you read the "
+            "diff at. Re-checked before anything is posted."
+        )
+    ),
+]
+
+SeverityArg = Annotated[
+    str,
+    Field(description="CRITICAL (block), HIGH (warn), MEDIUM (info) or LOW (note)."),
+]
+
+CategoryArg = Annotated[
+    str,
+    Field(description="A couple of words for what kind of finding this is, e.g. 'correctness'."),
+]
+
+MessageArg = Annotated[
+    str,
+    Field(description="What you want to say. Written by you; this server only renders it."),
+]
+
+LineArg = Annotated[
+    int,
+    Field(
+        description=(
+            "The line number as the diff shows it for that side: the new file's numbering "
+            "for added and context lines, the old file's for removed ones."
+        )
+    ),
+]
+
+SideArg = Annotated[
+    str,
+    Field(description=f"Which side of the diff the line is on: {', '.join(SIDES)}."),
+]
+
+ThroughArg = Annotated[
+    int | None,
+    Field(
+        description=(
+            "Optional last line of a range. The comment attaches at the first line and "
+            "names the whole block, because Bitbucket cannot anchor to more than one."
+        )
+    ),
+]
+
 PathArg = Annotated[
     str | None,
     Field(
@@ -92,7 +152,15 @@ PathArg = Annotated[
 
 # Domain refusals: the Caller asked for something that cannot be done, and every one of
 # these messages names what to do instead. They become ToolErrors rather than crashes.
-ASKED_FOR_THE_IMPOSSIBLE = (AmbiguousRequest, UnreadablePath, UnsafeQuery)
+ASKED_FOR_THE_IMPOSSIBLE = (
+    AmbiguousRequest,
+    AnchorNotInDiff,
+    BasisMoved,
+    MalformedFinding,
+    PathNotInDiff,
+    UnreadablePath,
+    UnsafeQuery,
+)
 
 PullRequestArg = Annotated[
     str,
@@ -219,6 +287,54 @@ def build_server(
         return diff_markdown(ref, diff, file, limit=settings.max_diff_characters)
 
     @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, openWorldHint=True),
+        description=(
+            "Post one finding as an inline comment, anchored to a line of the diff. "
+            "Requires the Review Basis you read the diff at: if the branch has been "
+            "pushed to since, nothing is posted and you are told to re-read. The anchor "
+            "is validated against the diff hunks first, so a line that is not in the diff "
+            "is an error naming the nearest lines that are — not a comment on the wrong "
+            "code. Every comment carries a machine-generated footer."
+        ),
+    )
+    async def bitbucket_add_pr_comment(
+        pull_request: PullRequestArg,
+        review_basis: BasisArg,
+        severity: SeverityArg,
+        message: MessageArg,
+        path: FilePathArg,
+        line: LineArg,
+        side: SideArg,
+        category: CategoryArg = "review",
+        through_line: ThroughArg = None,
+    ) -> str:
+        ref = _reference(pull_request)
+
+        async def work(client: BitbucketClient):
+            finding = Finding.of(
+                severity=severity,
+                category=category,
+                message=message,
+                anchor=anchor_of(path, line, side, through_line),
+            )
+            reviewer = await _reviewer(client)
+            return await post_finding(client, ref, finding, review_basis, reviewer, diffs)
+
+        posted = await with_bitbucket(work)
+
+        logger.info("Posted to {}: {}", ref, posted.describe())
+        return _posting_report(posted)
+
+    async def _reviewer(client: BitbucketClient) -> Reviewer:
+        """Whose name goes on the comment. Unknown display name is not a blocker: the
+        credential's email always identifies the account that will be held to it."""
+        identity = await whoami.of(client)
+        return Reviewer(
+            display_name=identity.display_name if identity else "",
+            email=gate.current().email,
+        )
+
+    @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
         description=(
             "Read the comments already on a pull request: who wrote each one, what it "
@@ -338,6 +454,20 @@ def build_server(
         return found.to_markdown()
 
     return mcp
+
+
+def _posting_report(posted) -> str:
+    """What happened, in this server's own words — outside any fence, because it is ours."""
+    lines = [f"# {posted.describe()}", ""]
+    if posted.comment is not None and posted.comment.is_orphaned:
+        lines += [
+            "Bitbucket could not place this comment against the current code. Re-read the "
+            "diff before posting anything else: the Basis check passed, so something "
+            "moved between reading and writing."
+        ]
+    elif posted.landed:
+        lines += ["The comment carries the machine-generated footer, as every one does."]
+    return "\n".join(lines)
 
 
 def _repository(raw: str) -> Repository:

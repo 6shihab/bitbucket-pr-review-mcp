@@ -410,3 +410,130 @@ class TestTheCommentsTool:
         await server.call_tool("bitbucket_get_pr_comments", {"pull_request": PR})
 
         assert [r.url.path for r in wire.requests].count("/2.0/user") == 1
+
+
+class TestPostingAComment:
+    """The first tool that writes. Everything it refuses is refused before the POST."""
+
+    async def test_it_is_registered_and_is_not_a_read(self, server):
+        tools = {tool.name: tool for tool in await server.list_tools()}
+
+        assert "bitbucket_add_pr_comment" in tools
+        assert tools["bitbucket_add_pr_comment"].annotations.readOnlyHint is False
+
+    async def test_a_finding_posts_and_reports_where_it_landed(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            httpx.Response(
+                201,
+                json={
+                    "id": 3001,
+                    "content": {"raw": "x"},
+                    "user": {"account_id": fixtures.OUR_ACCOUNT_ID, "display_name": "A"},
+                    "created_on": "2026-08-24T12:00:00+00:00",
+                    "inline": {"path": "src/app/retry.py", "to": 14},
+                },
+            ),
+        )
+
+        result = await server.call_tool(
+            "bitbucket_add_pr_comment",
+            {
+                "pull_request": PR,
+                "review_basis": fixtures.BASIS,
+                "severity": "HIGH",
+                "message": "`RETRIES` is undefined on this path.",
+                "path": "src/app/retry.py",
+                "line": 14,
+                "side": "added",
+            },
+        )
+
+        assert "3001" in text_of(result)
+        assert "footer" in text_of(result).lower()
+
+    async def test_the_footer_is_in_what_is_actually_sent(self, server, wire):
+        import json
+
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+            httpx.Response(201, json={"id": 3002, "inline": {"path": "x", "to": 1}}),
+        )
+
+        await server.call_tool(
+            "bitbucket_add_pr_comment",
+            {
+                "pull_request": PR,
+                "review_basis": fixtures.BASIS,
+                "severity": "LOW",
+                "message": "A note.",
+                "path": "src/app/retry.py",
+                "line": 14,
+                "side": "added",
+            },
+        )
+
+        sent = json.loads(wire.last.content)["content"]["raw"]
+        assert "Machine-generated review comment" in sent
+        assert "Anwar Hossain" in sent, "the reviewer whose account it posts under"
+
+    async def test_a_moved_basis_is_refused_with_instructions(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.pull_request(basis="aaaaaaaaaaaa")),
+        )
+
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_add_pr_comment",
+                {
+                    "pull_request": PR,
+                    "review_basis": fixtures.BASIS,
+                    "severity": "HIGH",
+                    "message": "Something.",
+                    "path": "src/app/retry.py",
+                    "line": 14,
+                    "side": "added",
+                },
+            )
+
+        assert "Nothing was posted" in str(caught.value)
+        assert not any(request.method == "POST" for request in wire.requests)
+
+    async def test_an_invented_line_is_refused_with_real_ones(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, text=fixtures.UNIFIED_DIFF),
+        )
+
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_add_pr_comment",
+                {
+                    "pull_request": PR,
+                    "review_basis": fixtures.BASIS,
+                    "severity": "HIGH",
+                    "message": "Something.",
+                    "path": "src/app/retry.py",
+                    "line": 900,
+                    "side": "added",
+                },
+            )
+
+        assert "nearest" in str(caught.value)
+        assert not any(request.method == "POST" for request in wire.requests)
+
+    async def test_no_argument_suppresses_the_footer(self, server):
+        tools = {tool.name: tool for tool in await server.list_tools()}
+        arguments = tools["bitbucket_add_pr_comment"].parameters["properties"]
+
+        assert not any(
+            word in name.lower()
+            for name in arguments
+            for word in ("footer", "attribution", "suppress", "anonymous")
+        )

@@ -218,3 +218,36 @@ class TestRendering:
         rendered = diff_markdown(REF, diff, diff.for_path("assets/logo.png"), limit=100_000)
 
         assert "binary" in rendered.lower()
+
+
+class TestTheAnchorGutter:
+    """A Caller that has to count `+` lines to find line 16 will get it wrong, and a
+    wrong line number is a comment on the wrong code. So the diff shows the numbers."""
+
+    def test_each_line_carries_its_old_and_new_numbers(self, diff):
+        rendered = diff_markdown(REF, diff, diff.for_path("src/app/retry.py"), limit=100_000)
+
+        assert "   12    12 |      session = build_session()" in rendered
+        assert "   13       | -    return session.post(UPSTREAM, json=payload)" in rendered
+        assert "         13 | +    for attempt in range(RETRIES):" in rendered
+
+    def test_the_counters_advance_independently(self, diff):
+        rendered = diff_markdown(REF, diff, diff.for_path("src/app/retry.py"), limit=100_000)
+
+        assert "   14    19 |" in rendered, "six added and one removed shift the new side by five"
+
+    def test_the_legend_says_which_column_each_side_uses(self, diff):
+        rendered = diff_markdown(REF, diff, None, limit=100_000)
+
+        assert "new-file column for `added`" in rendered
+        assert "old-file column for `removed`" in rendered
+
+    def test_the_legend_says_which_part_is_ours(self, diff):
+        rendered = diff_markdown(REF, diff, None, limit=100_000)
+
+        assert "this server's" in rendered
+        assert "Everything after the `|` is Bitbucket's" in rendered
+
+    def test_the_raw_diff_is_still_available_unannotated(self, diff):
+        """Nothing else should have to read around a gutter it did not ask for."""
+        assert diff.for_path("uv.lock").to_text().splitlines()[-1].startswith("+version")

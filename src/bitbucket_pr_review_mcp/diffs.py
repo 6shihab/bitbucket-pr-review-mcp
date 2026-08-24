@@ -36,7 +36,44 @@ NEW_PATH = re.compile(r"^\+\+\+ (?:b/)?(?P<path>.+)$")
 
 DEV_NULL = "/dev/null"
 
+# The three sides of a diff, named the way a human reads one. An Anchor uses these.
+ADDED = "added"
+REMOVED = "removed"
+CONTEXT = "context"
+SIDES = (ADDED, REMOVED, CONTEXT)
+
 CACHE_CAPACITY = 4
+
+
+@dataclass(frozen=True, slots=True)
+class DiffLine:
+    """One line of a hunk, with the number each side calls it.
+
+    This is what makes an Anchor writable. A Caller that has to count lines inside a
+    hunk to work out that the fourth `+` is line 16 will get it wrong, and a wrong line
+    number is a comment on the wrong code — so the numbers are computed here, shown in
+    the rendered diff, and validated against these same values before any post.
+    """
+
+    old_line: int | None
+    new_line: int | None
+    text: str
+
+    @property
+    def side(self) -> str:
+        if self.old_line is None:
+            return ADDED
+        if self.new_line is None:
+            return REMOVED
+        return CONTEXT
+
+    @property
+    def number(self) -> int:
+        """The number an Anchor uses for this line: old for removed, new otherwise."""
+        return (self.old_line if self.side == REMOVED else self.new_line) or 0
+
+    def describe(self) -> str:
+        return f"{self.side} line {self.number}: {self.text[1:].strip()[:60]}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,6 +96,22 @@ class Hunk:
 
     def to_text(self) -> str:
         return "\n".join((self.header, *self.lines))
+
+    def numbered(self) -> list[str]:
+        """The hunk with each line's old and new numbers in a gutter.
+
+        Anchoring is where a reviewer of this kind most often goes wrong, and the reason
+        is arithmetic: working out that the fourth `+` in a hunk is line 16 means tracking
+        two counters that advance at different rates. The numbers are already computed
+        here to validate an Anchor, so showing them costs nothing and removes the
+        arithmetic entirely.
+        """
+        rows = [self.header]
+        for line in walk(self):
+            old = f"{line.old_line:>5}" if line.old_line is not None else "     "
+            new = f"{line.new_line:>5}" if line.new_line is not None else "     "
+            rows.append(f"{old} {new} | {line.text}")
+        return rows
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,8 +136,14 @@ class FileDiff:
     def names(self) -> tuple[str, ...]:
         return tuple(name for name in (self.new_path, self.old_path) if name)
 
-    def to_text(self) -> str:
-        return "\n".join((*self.header, *(hunk.to_text() for hunk in self.hunks)))
+    def to_text(self, *, numbered: bool = False) -> str:
+        if not numbered:
+            return "\n".join((*self.header, *(hunk.to_text() for hunk in self.hunks)))
+
+        rows: list[str] = list(self.header)
+        for hunk in self.hunks:
+            rows.extend(hunk.numbered())
+        return "\n".join(rows)
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,8 +174,30 @@ class Diff:
         ]
         return suffix_matches[0] if len(suffix_matches) == 1 else None
 
-    def to_text(self) -> str:
-        return "\n".join(file.to_text() for file in self.files)
+    def to_text(self, *, numbered: bool = False) -> str:
+        return "\n".join(file.to_text(numbered=numbered) for file in self.files)
+
+
+def walk(hunk: Hunk) -> list[DiffLine]:
+    """Number a hunk's lines the way git does: two counters, advanced by the prefix."""
+    old_number, new_number = hunk.old_start, hunk.new_start
+    lines: list[DiffLine] = []
+
+    for text in hunk.lines:
+        if text.startswith("+"):
+            lines.append(DiffLine(old_line=None, new_line=new_number, text=text))
+            new_number += 1
+        elif text.startswith("-"):
+            lines.append(DiffLine(old_line=old_number, new_line=None, text=text))
+            old_number += 1
+        elif text.startswith("\\"):
+            continue  # "\ No newline at end of file" belongs to the line before it
+        else:
+            lines.append(DiffLine(old_line=old_number, new_line=new_number, text=text))
+            old_number += 1
+            new_number += 1
+
+    return lines
 
 
 def parse_diff(text: str, basis: str) -> Diff:
@@ -305,7 +386,8 @@ def diff_markdown(
 ) -> str:
     """The diff a Caller reads: what it is, whether it is all of it, then the content."""
     subject = f"`{file.path}`" if file is not None else f"{len(diff.files)} changed files"
-    body, cut = clip(file.to_text() if file is not None else diff.to_text(), limit)
+    shown = file if file is not None else diff
+    body, cut = clip(shown.to_text(numbered=True), limit)
 
     lines = [
         f"# Diff for {ref} — {subject}",
@@ -326,7 +408,14 @@ def diff_markdown(
     if cut:
         lines += [notice(_truncation_advice(file, limit)), ""]
 
-    lines += [untrusted(body or "(no textual changes)")]
+    lines += [
+        "The two numbers before each `|` are this server's: the line's old-file and "
+        "new-file numbers. To comment on a line, anchor to the number in the column its "
+        "side uses — the new-file column for `added` and `context` lines, the old-file "
+        "column for `removed` ones. Everything after the `|` is Bitbucket's.",
+        "",
+        untrusted(body or "(no textual changes)"),
+    ]
     return "\n".join(lines)
 
 
