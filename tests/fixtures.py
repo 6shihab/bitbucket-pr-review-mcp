@@ -284,7 +284,8 @@ def comments() -> dict[str, Any]:
                 "Anwar Hossain",
                 OUR_ACCOUNT_ID,
                 "HIGH severity: `RETRIES` is read before it is defined on the failure path.",
-                inline={"path": "src/app/retry.py", "from": None, "to": 14},
+                inline={"path": "src/app/retry.py", "from": None, "to": 14,
+                        "start_from": None, "start_to": None},
             ),
             _comment(
                 1003,

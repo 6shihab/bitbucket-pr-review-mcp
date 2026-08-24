@@ -23,16 +23,21 @@ about layout and none about correctness; that boundary is the whole of ADR-0001.
 
 **Blocked by:** 03 (needs parsed diff hunks), 05 (needs comment reading for authorship).
 
-**Status:** done — one criterion still unverified against a live pull request
+**Status:** done
 
 - [x] A Finding posts as an Inline Comment on the correct file and line, verified by reading it back
-      Read back from Bitbucket's own record of the created comment, which is what the
-      POST returns. **Not yet done against a live pull request** — see below.
+      Done live: comment #847207531 on `jantrik/admin-client` 2476, anchored to
+      `README.md` added line 2, read back through `bitbucket_get_pr_comments` as ours
+      and not orphaned. The response is recorded in `tests/recorded/comments.json`.
 - [x] An Anchor on an added line, a removed line and a context line each land correctly
 - [x] A multi-line range anchors to the whole block rather than one line within it
-      As far as the API allows: Bitbucket's `inline` object has no range, so the comment
-      attaches at the first line and the body names the block. Silently commenting on one
-      line of five would misrepresent what the Finding is about.
+      Bitbucket does store a range — `start_to`..`to` on the new side, `start_from`..`from`
+      on the old — and this now sends it. **The field names came from the response to the
+      live post, not from the API reference**, which describes `inline` as
+      `{path, from, to}`. The first implementation here claimed ranges were impossible
+      and anchored at a single line; that was wrong, and only posting for real found it.
+      Which of the pair is the first line is still an assumption: a live range post
+      would settle it.
 - [x] An Anchor not present in the diff is refused before anything is posted, with the nearest valid lines named
 - [x] A post whose Review Basis no longer matches the Pull Request head is refused with an instruction to re-fetch
 - [x] A posted comment that comes back orphaned is reported rather than silently accepted
@@ -60,9 +65,10 @@ in exactly one function. There are tests asserting that the same number on two d
 sides produces two different anchors, because inverting these does not raise — it
 attaches a comment to real code that nobody is reviewing.
 
-**Still to verify live:** posting to a real pull request. The read path has been exercised
-against `jantrik/admin-client` 2476 throughout, but nothing has been written to it —
-writing to somebody's repository is not something to do without being asked.
+**The live post paid for itself immediately.** Three reads of the API reference had not
+turned up `start_from`/`start_to`; the response to the first real comment did. The
+lesson generalises: for this API, the response to a write is a better specification than
+the documentation of it.
 
 ## Note from the first live run (2026-08-24)
 

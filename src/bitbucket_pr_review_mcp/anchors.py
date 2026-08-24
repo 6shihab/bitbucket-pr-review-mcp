@@ -12,9 +12,11 @@ against the parsed hunks before anything is sent. A line that is not in the diff
 refused with the nearest lines that *are*, including their sides and their text, so the
 Caller's next call is right rather than another guess.
 
-A range anchors at its first line and names the whole block in the comment body: the API
-has no way to express "these five lines", and pretending otherwise by silently commenting
-on one of them would misrepresent what the Finding is about.
+A range really does anchor to the whole block: Bitbucket stores `start_to`..`to` on the
+new side and `start_from`..`from` on the old one. Neither field appears in the reference
+this was built from; both turned up in the response to the first comment this server
+posted for real. The body names the range as well, so a reader who only sees the badge
+on the last line still knows what the Finding is about.
 """
 
 from __future__ import annotations
@@ -99,12 +101,23 @@ class Anchored:
     def inline(self) -> dict[str, object]:
         """Bitbucket's inline object. `to` is the new file, `from` is the old one.
 
-        The comment lands on the first line of a range: the API cannot express a block,
-        and the body names the range so the Finding still says what it is about.
+        A range uses the `start_*` pair: the comment covers `start_to`..`to` on the new
+        side, or `start_from`..`from` on the old one. Those two fields are not in the
+        API reference this was built from — they turned up in the response to the first
+        comment this server ever posted, which is the argument for posting one.
         """
+        first, last = self.anchor.line, (self.anchor.through or self.anchor.line)
+
         if self.anchor.side == REMOVED:
-            return {"path": self.file.path, "from": self.anchor.line}
-        return {"path": self.file.path, "to": self.anchor.line}
+            inline: dict[str, object] = {"path": self.file.path, "from": last}
+            if self.anchor.is_range:
+                inline["start_from"] = first
+            return inline
+
+        inline = {"path": self.file.path, "to": last}
+        if self.anchor.is_range:
+            inline["start_to"] = first
+        return inline
 
 
 def anchor_in(diff: Diff, anchor: Anchor) -> Anchored:

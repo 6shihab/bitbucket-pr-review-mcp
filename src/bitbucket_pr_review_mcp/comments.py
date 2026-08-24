@@ -39,6 +39,8 @@ class Comment:
     path: str | None
     old_line: int | None
     new_line: int | None
+    start_old_line: int | None
+    start_new_line: int | None
     is_orphaned: bool
     is_ours: bool | None
     parent_id: int | None
@@ -55,11 +57,21 @@ class Comment:
         return self.new_line if self.new_line is not None else self.old_line
 
     @property
+    def start_line(self) -> int | None:
+        """Where a multi-line comment begins, when Bitbucket recorded one."""
+        return self.start_new_line if self.new_line is not None else self.start_old_line
+
+    @property
     def anchor(self) -> str:
         if not self.path:
             return "the pull request as a whole"
+        if not self.line:
+            return f"{self.path} (no line)"
+
         side = "added/context" if self.new_line is not None else "removed"
-        return f"{self.path}:{self.line} ({side})" if self.line else f"{self.path} (no line)"
+        start = self.start_line
+        where = f"{start}-{self.line}" if start and start != self.line else str(self.line)
+        return f"{self.path}:{where} ({side})"
 
     def flags(self) -> tuple[str, ...]:
         found = []
@@ -199,6 +211,8 @@ def read_comment(value: dict, our_account_id: str | None) -> Comment:
         path=str(inline.get("path")) if inline.get("path") else None,
         old_line=_line(inline.get("from")),
         new_line=_line(inline.get("to")),
+        start_old_line=_line(inline.get("start_from")),
+        start_new_line=_line(inline.get("start_to")),
         is_orphaned=_is_orphaned(inline),
         is_ours=(account_id == our_account_id) if our_account_id else None,
         parent_id=_line((value.get("parent") or {}).get("id")),

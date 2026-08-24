@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from bitbucket_pr_review_mcp.changes import read_changed_file
+from bitbucket_pr_review_mcp.comments import read_comment
 from bitbucket_pr_review_mcp.commits import read_commit
 from bitbucket_pr_review_mcp.diffs import parse_diff
 from bitbucket_pr_review_mcp.pullrequests import read_pull_request
@@ -31,6 +32,9 @@ from bitbucket_pr_review_mcp.source import read_entry
 
 RECORDED = Path(__file__).parent / "recorded"
 REF = PullRequestRef("jantrik", "admin-client", 2476)
+
+# The account the recorded comment was posted by — read from the recording, not assumed.
+OUR_REAL_ACCOUNT = '712020:0132e6b0-9ae2-4292-8d60-dee036f20150'
 
 
 def recorded(name: str):
@@ -149,3 +153,41 @@ class TestRecordedRepositoryReads:
         value = recorded("search.json")["values"][0]
 
         assert repository_of(value) == Repository("jantrik", "admin-client")
+
+
+class TestARecordedComment:
+    """The first comment this server ever posted, read back from Bitbucket.
+
+    It is the reason ranges work. The reference this was built from describes `inline`
+    as `{path, from, to}`; the real object has `start_from` and `start_to` as well, so
+    Bitbucket can anchor to a block and the first implementation here was wrong to say
+    it could not.
+    """
+
+    def test_the_inline_object_carries_the_range_fields(self):
+        inline = recorded("comments.json")["values"][0]["inline"]
+
+        assert set(inline) == {"path", "from", "to", "start_from", "start_to"}
+
+    def test_a_single_line_anchor_leaves_the_range_fields_null(self):
+        inline = recorded("comments.json")["values"][0]["inline"]
+
+        assert inline["to"] == 2 and inline["from"] is None
+        assert inline["start_to"] is None and inline["start_from"] is None
+
+    def test_there_is_no_outdated_field_on_a_live_anchor(self):
+        """Which is why a null pair is also read as orphaned: absence is the only signal."""
+        assert "outdated" not in recorded("comments.json")["values"][0]["inline"]
+
+    def test_the_reader_places_it_where_bitbucket_says(self):
+        comment = read_comment(recorded("comments.json")["values"][0], OUR_REAL_ACCOUNT)
+
+        assert comment.anchor == "README.md:2 (added/context)"
+        assert comment.is_ours
+        assert not comment.is_orphaned
+
+    def test_the_attribution_footer_survived_the_round_trip(self):
+        comment = read_comment(recorded("comments.json")["values"][0], OUR_REAL_ACCOUNT)
+
+        assert "Machine-generated review comment" in comment.body
+        assert "bitbucket-pr-review-mcp" in comment.body

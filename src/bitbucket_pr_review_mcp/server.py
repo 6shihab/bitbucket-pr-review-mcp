@@ -134,8 +134,8 @@ ThroughArg = Annotated[
     int | None,
     Field(
         description=(
-            "Optional last line of a range. The comment attaches at the first line and "
-            "names the whole block, because Bitbucket cannot anchor to more than one."
+            "Optional last line of a range. The comment covers the whole block, and its "
+            "heading names the range."
         )
     ),
 ]

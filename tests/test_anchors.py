@@ -106,11 +106,23 @@ class TestTranslatingToBitbucket:
 
 
 class TestRanges:
-    def test_a_range_anchors_at_its_first_line(self, diff):
+    """Bitbucket does anchor to a block: `start_to`..`to`, or `start_from`..`from`.
+
+    Those fields are not in the API reference this was built from — they turned up in
+    the response to the first comment this server posted for real, which is the argument
+    for posting one.
+    """
+
+    def test_a_range_on_the_new_side_uses_start_to(self, diff):
         anchored = anchor_in(diff, anchor(13, ADDED, through=18))
 
-        assert anchored.inline() == {"path": FILE, "to": 13}
+        assert anchored.inline() == {"path": FILE, "start_to": 13, "to": 18}
         assert anchored.anchor.is_range
+
+    def test_a_range_on_the_old_side_uses_start_from(self, diff):
+        anchored = anchor_in(diff, anchor(13, REMOVED, through=13))
+
+        assert anchored.inline() == {"path": FILE, "from": 13}, "one line is not a range"
 
     def test_every_line_of_the_range_has_to_exist(self, diff):
         with pytest.raises(AnchorNotInDiff) as caught:
@@ -128,6 +140,7 @@ class TestRanges:
         anchored = anchor_in(diff, anchor(14, ADDED, through=14))
 
         assert not anchored.anchor.is_range
+        assert "start_to" not in anchored.inline()
 
 
 class TestRefusingAnInventedLine:
