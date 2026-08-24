@@ -36,8 +36,9 @@ about layout and none about correctness; that boundary is the whole of ADR-0001.
       live post, not from the API reference**, which describes `inline` as
       `{path, from, to}`. The first implementation here claimed ranges were impossible
       and anchored at a single line; that was wrong, and only posting for real found it.
-      Which of the pair is the first line is still an assumption: a live range post
-      would settle it.
+      Settled by a second live post: comment #847210792 was sent
+      `start_to: 3, to: 5` and Bitbucket stored exactly that, so `start_to` is the
+      first line of the block and `to` is the last. It reads back as `README.md:3-5`.
 - [x] An Anchor not present in the diff is refused before anything is posted, with the nearest valid lines named
 - [x] A post whose Review Basis no longer matches the Pull Request head is refused with an instruction to re-fetch
 - [x] A posted comment that comes back orphaned is reported rather than silently accepted

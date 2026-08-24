@@ -191,3 +191,32 @@ class TestARecordedComment:
 
         assert "Machine-generated review comment" in comment.body
         assert "bitbucket-pr-review-mcp" in comment.body
+
+
+class TestARecordedRangeComment:
+    """The second live post, which settled which end of the range each field names.
+
+    Sent `start_to: 3, to: 5`; Bitbucket stored exactly that. So `start_to` is the first
+    line of the block and `to` is the last — the badge lands on the last line, and the
+    read-back reports the whole range.
+    """
+
+    def test_bitbucket_kept_the_range_it_was_given(self):
+        inline = recorded("comments.json")["values"][1]["inline"]
+
+        assert inline["start_to"] == 3, "the first line of the block"
+        assert inline["to"] == 5, "the last line of the block"
+        assert inline["start_from"] is None and inline["from"] is None
+
+    def test_the_reader_reports_the_whole_block(self):
+        comment = read_comment(recorded("comments.json")["values"][1], OUR_REAL_ACCOUNT)
+
+        assert comment.anchor == "README.md:3-5 (added/context)"
+        assert comment.start_line == 3
+        assert comment.line == 5
+
+    def test_the_range_is_named_in_the_body_as_well(self):
+        """A reader who only sees the badge on the last line still learns the block."""
+        comment = read_comment(recorded("comments.json")["values"][1], OUR_REAL_ACCOUNT)
+
+        assert "context lines 3–5" in comment.body
