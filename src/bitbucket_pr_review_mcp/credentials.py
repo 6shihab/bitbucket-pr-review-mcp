@@ -6,18 +6,20 @@ Bitbucket returns 401 with an empty body for the other two, which is among the l
 diagnosable failures on this API, so the distinction is enforced here rather than
 discovered later (ADR-0003).
 
-Ticket 01 reads the credential from the environment. Ticket 02 replaces that source
-with the OS keychain and the browser setup page; this module's shape does not change.
+The credential carries the expiry date the Reviewer entered. Bitbucket does not tell
+us when an API token dies, so the alternative to asking is an unexplained 401 in the
+middle of a review; a date the Reviewer typed is worth more than no date at all, even
+though nothing verifies it.
+
+This module is plain data. It knows nothing of keychains (see `keychain.py`), nothing of
+HTTP, and nothing of MCP.
 """
 
 from __future__ import annotations
 
 import base64
-import os
 from dataclasses import dataclass
-
-EMAIL_ENV = "BB_MCP_EMAIL"
-TOKEN_ENV = "BB_MCP_API_TOKEN"
+from datetime import date
 
 
 class CredentialError(RuntimeError):
@@ -50,12 +52,53 @@ class Credential:
         return f"Credential(email={self.email!r}, token=<redacted>)"
 
 
-def from_environment() -> Credential:
-    email = os.environ.get(EMAIL_ENV, "").strip()
-    token = os.environ.get(TOKEN_ENV, "").strip()
-    if not email or not token:
-        raise CredentialError(
-            f"No credential. Set {EMAIL_ENV} to your Atlassian account email and "
-            f"{TOKEN_ENV} to an API token granting repository read and pull request write."
-        )
-    return Credential(email=email, token=token)
+@dataclass(frozen=True, slots=True)
+class StoredCredential:
+    """A credential together with the expiry date the Reviewer gave it."""
+
+    credential: Credential
+    expires_on: date
+
+    @classmethod
+    def of(
+        cls,
+        *,
+        email: str,
+        token: str,
+        expires_on: str | date,
+        today: date | None = None,
+    ) -> StoredCredential:
+        """Build one from form input, refusing anything that would be stored unusable."""
+        parsed = expires_on if isinstance(expires_on, date) else _parse_date(expires_on)
+        if parsed < (today or date.today()):
+            raise ValueError(
+                f"{parsed.isoformat()} is in the past. Enter the date the token itself "
+                "expires — Atlassian shows it on the token list."
+            )
+        credential = Credential(email=email.strip(), token=token.strip())
+        return cls(credential=credential, expires_on=parsed)
+
+    @property
+    def email(self) -> str:
+        return self.credential.email
+
+    def is_expired(self, today: date | None = None) -> bool:
+        return self.expires_on < (today or date.today())
+
+    def usable_on(self, today: date | None = None) -> bool:
+        return not self.is_expired(today)
+
+    def days_left(self, today: date | None = None) -> int:
+        return (self.expires_on - (today or date.today())).days
+
+    def __repr__(self) -> str:
+        return f"StoredCredential({self.credential!r}, expires_on={self.expires_on.isoformat()})"
+
+
+def _parse_date(raw: str) -> date:
+    try:
+        return date.fromisoformat(raw.strip())
+    except ValueError as exc:
+        raise ValueError(
+            f"{raw!r} is not a date. Give the token's expiry as YYYY-MM-DD."
+        ) from exc

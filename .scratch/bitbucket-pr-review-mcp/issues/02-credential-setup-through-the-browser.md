@@ -18,22 +18,44 @@ who is already expecting the tool to do things.
 
 **Blocked by:** 01 — needs the HTTP client, settings and reference parsing.
 
-**Status:** ready-for-agent
+**Status:** done — except one criterion, noted below
 
-- [ ] With no credential stored, every tool fails with an error naming the setup URL
-- [ ] The setup page names the exact token scopes to grant and links to where they are created
-- [ ] The field is labelled as the Atlassian account email, and a Bitbucket username is rejected rather than passed through to a later 401
-- [ ] Submitting verifies against Bitbucket and echoes the returned display name before anything is stored
-- [ ] A wrong email or token fails at the form, not on the next review
-- [ ] The credential is stored in the OS keychain and never written to a file
-- [ ] An unavailable keychain fails loudly rather than silently downgrading to file storage
-- [ ] The listener closes on first successful save, and after five minutes regardless
-- [ ] The listener binds loopback only, on a random port
-- [ ] A request carrying a foreign origin or host header is rejected
-- [ ] A wrong or already-used one-time token is rejected
-- [ ] The listener does not exist while a usable credential is stored
-- [ ] No tool argument can cause the listener to open
-- [ ] Startup warns when the stored token expires within seven days, naming the command that renews it
-- [ ] Startup refuses to run when the credential grants more than reading a repository and writing to Pull Requests
-- [ ] The setup application is tested as an ASGI app in process, with real routing and real header validation
+- [x] With no credential stored, every tool fails with an error naming the setup URL
+- [x] The setup page names the exact token scopes to grant and links to where they are created
+- [x] The field is labelled as the Atlassian account email, and a Bitbucket username is rejected rather than passed through to a later 401
+- [x] Submitting verifies against Bitbucket and echoes the returned display name before anything is stored
+- [x] A wrong email or token fails at the form, not on the next review
+- [x] The credential is stored in the OS keychain and never written to a file
+- [x] An unavailable keychain fails loudly rather than silently downgrading to file storage
+- [x] The listener closes on first successful save, and after five minutes regardless
+- [x] The listener binds loopback only, on a random port
+- [x] A request carrying a foreign origin or host header is rejected
+- [x] A wrong or already-used one-time token is rejected
+- [x] The listener does not exist while a usable credential is stored
+- [x] No tool argument can cause the listener to open
+- [x] Startup warns when the stored token expires within seven days, naming the command that renews it
+- [x] Startup refuses to run when the credential grants more than reading a repository and writing to Pull Requests
+      **With one honest limit.** Scopes are read from Bitbucket's `x-oauth-scopes`
+      response header, which is the only evidence available about an opaque token.
+      When Bitbucket does not send that header the server cannot judge the token, and
+      it starts with a warning rather than refusing — refusing on absent evidence
+      would make the server unusable the day Atlassian changes a header. Anything
+      unrecognised *in* the header is treated as excessive, so the check fails closed
+      on scopes but open on silence.
+- [x] The setup application is tested as an ASGI app in process, with real routing and real header validation
 - [ ] Credential storage is tested against the keyring library's in-memory backend, not a bespoke abstraction
+      **NOT MET as written.** keyring 25.7 ships no in-memory backend — only `fail`,
+      `null`, `chainer` and the platform ones. `tests/memory_keyring.py` is the nearest
+      honest reading: a real `keyring.backend.KeyringBackend` subclass installed with
+      `keyring.set_keyring`, so `keychain.py` goes through the real keyring API and the
+      seam is a backend rather than a wrapper of our own. It is still forty lines we
+      wrote, so if `keyrings.alt` is ever added as a dev dependency its
+      `PlaintextKeyring` (or a maintained in-memory backend) should replace it.
+
+## What ticket 01 left open
+
+Its last criterion — fixtures captured from real Bitbucket responses — is still unmet.
+This ticket brings the credential that makes capture possible, but not a live account
+or a real Pull Request, so `tests/fixtures.py` remains modelled on documented shapes.
+The first Reviewer to run `--check` against a real workspace should record
+`GET /2.0/user` and one pull request and replace those bodies.

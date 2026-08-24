@@ -73,9 +73,12 @@ source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
     { name = "httpx" },
+    { name = "keyring" },
     { name = "loguru" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
+    { name = "starlette" },
+    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
@@ -90,9 +93,12 @@ dev = [
 requires-dist = [
     { name = "fastmcp", specifier = ">=3.4.4,<4.0.0" },
     { name = "httpx", specifier = ">=0.28" },
+    { name = "keyring", specifier = ">=25.6" },
     { name = "loguru", specifier = ">=0.7" },
     { name = "pydantic-settings", specifier = ">=2.6" },
     { name = "pyyaml", specifier = ">=6.0" },
+    { name = "starlette", specifier = ">=0.41" },
+    { name = "uvicorn", specifier = ">=0.32" },
 ]
 
 [package.metadata.requires-dev]

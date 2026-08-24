@@ -18,8 +18,9 @@ from loguru import logger
 from mcp.types import ToolAnnotations
 from pydantic import Field
 
-from .client import BitbucketClient, BitbucketError, build_http_client
-from .credentials import Credential
+from .client import BitbucketClient, BitbucketError, Unauthorized, build_http_client
+from .credentials import Credential, CredentialError
+from .gate import CredentialGate
 from .guard import Forbidden
 from .pullrequests import fetch_pull_request
 from .references import InvalidReference, PullRequestRef
@@ -57,7 +58,7 @@ PullRequestArg = Annotated[
 def build_server(
     settings: Settings,
     allowlist: Allowlist,
-    credential: Credential,
+    gate: CredentialGate,
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> FastMCP:
     """Wire the tools over a guarded Bitbucket client.
@@ -67,8 +68,30 @@ def build_server(
     """
     make_http = http_factory or (lambda: build_http_client(settings.request_timeout_seconds))
 
-    def open_client() -> BitbucketClient:
+    def open_client(credential: Credential) -> BitbucketClient:
         return BitbucketClient(http=make_http(), allowlist=allowlist, credential=credential)
+
+    async def with_bitbucket(work):
+        """Every tool's spine: the credential, a guarded client, errors that teach.
+
+        A tool that forgets to go through here does not get a client at all, which is the
+        point — the credential is not reachable any other way.
+        """
+        try:
+            credential = gate.current()
+        except CredentialError as exc:  # SetupRequired names the page that fixes it
+            raise ToolError(str(exc)) from exc
+
+        client = open_client(credential)
+        try:
+            return await work(client)
+        except Unauthorized as exc:
+            gate.report_unauthorized()
+            raise ToolError(_after_rejection(gate, exc)) from exc
+        except (Forbidden, BitbucketError) as exc:
+            raise ToolError(str(exc)) from exc
+        finally:
+            await client.aclose()
 
     mcp: FastMCP = FastMCP(name="bitbucket-pr-review", instructions=SERVER_INSTRUCTIONS)
 
@@ -82,20 +105,21 @@ def build_server(
     )
     async def bitbucket_get_pull_request(pull_request: PullRequestArg) -> str:
         ref = _reference(pull_request)
-        client = open_client()
-        try:
-            found = await fetch_pull_request(client, ref)
-        except Forbidden as exc:
-            raise ToolError(str(exc)) from exc
-        except BitbucketError as exc:
-            raise ToolError(str(exc)) from exc
-        finally:
-            await client.aclose()
+        found = await with_bitbucket(lambda client: fetch_pull_request(client, ref))
 
         logger.debug("Read {} ({})", ref, found.state)
         return found.to_markdown()
 
     return mcp
+
+
+def _after_rejection(gate: CredentialGate, exc: Unauthorized) -> str:
+    """A 401 is one of the three facts that reopen setup (ADR-0004), so say where."""
+    try:
+        gate.current()
+    except CredentialError as required:
+        return str(required)
+    return str(exc)
 
 
 def _reference(raw: str) -> PullRequestRef:

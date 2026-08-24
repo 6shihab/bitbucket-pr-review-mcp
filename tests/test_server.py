@@ -8,6 +8,8 @@ crashes, and nothing but MCP protocol messages reaches stdout.
 
 from __future__ import annotations
 
+import contextlib
+
 import httpx
 import pytest
 from fastmcp.exceptions import ToolError
@@ -18,16 +20,26 @@ from bitbucket_pr_review_mcp.settings import Settings
 from . import fixtures
 
 
-@pytest.fixture
-def server(wire, allowlist, credential):
+def build(wire, allowlist, gate):
     return build_server(
         settings=Settings(),
         allowlist=allowlist,
-        credential=credential,
+        gate=gate,
         http_factory=lambda: httpx.AsyncClient(
             transport=wire.transport(), base_url="https://api.bitbucket.org"
         ),
     )
+
+
+@pytest.fixture
+def server(wire, allowlist, gate):
+    return build(wire, allowlist, gate)
+
+
+@pytest.fixture
+def unconfigured(wire, allowlist, empty_gate):
+    """A server that has never been given a credential."""
+    return build(wire, allowlist, empty_gate)
 
 
 class TestTheToolSurface:
@@ -91,3 +103,55 @@ class TestStdoutIsSacred:
         captured = capsys.readouterr()
         assert captured.out == "", "nothing but MCP protocol messages may reach stdout"
         assert "a log line" in captured.err
+
+
+class TestWithNoCredentialYet:
+    """ADR-0004: a tool that cannot work says where the setup page is, rather than
+    surfacing a 401 the Reviewer has no way to interpret."""
+
+    async def test_the_tool_fails_with_the_setup_url(self, unconfigured, setup_listener):
+        with pytest.raises(ToolError) as caught:
+            await unconfigured.call_tool(
+                "bitbucket_get_pull_request", {"pull_request": "streamstech/db-explorer/42"}
+            )
+
+        assert setup_listener.URL in str(caught.value)
+
+    async def test_nothing_reaches_bitbucket_without_a_credential(self, unconfigured, wire):
+        with pytest.raises(ToolError):
+            await unconfigured.call_tool(
+                "bitbucket_get_pull_request", {"pull_request": "streamstech/db-explorer/42"}
+            )
+
+        assert not wire.called
+
+    async def test_no_tool_argument_can_open_the_listener(self, server, wire, setup_listener):
+        """The listener opens on facts, never on input. A pull request description that
+        could raise a credential form would be phishing aimed at the Reviewer."""
+        wire.will_return(httpx.Response(200, json=fixtures.pull_request()))
+
+        for argument in [
+            "streamstech/db-explorer/42",
+            "nonsense",
+            "streamstech/secret-payroll/1",
+            "https://bitbucket.org/streamstech/db-explorer/pull-requests/42?setup=1",
+        ]:
+            with contextlib.suppress(ToolError):
+                await server.call_tool("bitbucket_get_pull_request", {"pull_request": argument})
+
+        assert setup_listener.starts == 0
+
+
+class TestWhenBitbucketRejectsTheCredential:
+    async def test_a_401_reopens_setup_and_the_error_says_where(
+        self, server, wire, setup_listener
+    ):
+        wire.will_return(httpx.Response(401, text=""))
+
+        with pytest.raises(ToolError) as caught:
+            await server.call_tool(
+                "bitbucket_get_pull_request", {"pull_request": "streamstech/db-explorer/42"}
+            )
+
+        assert setup_listener.starts == 1
+        assert setup_listener.URL in str(caught.value)

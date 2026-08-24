@@ -8,11 +8,16 @@ testing note; agreed before any of this was written).
 
 from __future__ import annotations
 
+from datetime import date
+
 import httpx
+import keyring
 import pytest
 
 from bitbucket_pr_review_mcp.client import BitbucketClient
-from bitbucket_pr_review_mcp.credentials import Credential
+from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
+from bitbucket_pr_review_mcp.gate import CredentialGate
+from bitbucket_pr_review_mcp.keychain import Keychain
 from bitbucket_pr_review_mcp.references import Repository
 from bitbucket_pr_review_mcp.settings import Allowlist
 
@@ -69,3 +74,57 @@ def wire() -> Wire:
 def client(wire: Wire, allowlist: Allowlist, credential: Credential):
     http = httpx.AsyncClient(transport=wire.transport(), base_url="https://api.bitbucket.org")
     return BitbucketClient(http=http, allowlist=allowlist, credential=credential)
+
+
+@pytest.fixture
+def memory_keyring():
+    """Install a real keyring backend that keeps secrets in a dict, for one test."""
+    from .memory_keyring import InMemoryKeyring
+
+    previous = keyring.get_keyring()
+    backend = InMemoryKeyring()
+    keyring.set_keyring(backend)
+    yield backend
+    keyring.set_keyring(previous)
+
+
+@pytest.fixture
+def keychain(memory_keyring) -> Keychain:
+    return Keychain()
+
+
+class RecordingSetup:
+    """The setup listener, reduced to the only two things the gate can do to it."""
+
+    URL = "http://127.0.0.1:54321/setup?token=one-time"
+
+    def __init__(self) -> None:
+        self.starts = 0
+        self.stops = 0
+        self.on_saved = None
+
+    def start(self, on_saved) -> str:
+        self.starts += 1
+        self.on_saved = on_saved
+        return self.URL
+
+    def stop(self) -> None:
+        self.stops += 1
+
+
+@pytest.fixture
+def setup_listener() -> RecordingSetup:
+    return RecordingSetup()
+
+
+@pytest.fixture
+def empty_gate(keychain, setup_listener) -> CredentialGate:
+    """A gate with nothing in the keychain: every tool should point at setup."""
+    return CredentialGate(keychain, setup_listener)
+
+
+@pytest.fixture
+def gate(empty_gate, keychain, credential) -> CredentialGate:
+    """A gate holding a credential that is good for years."""
+    keychain.save(StoredCredential(credential=credential, expires_on=date(2099, 1, 1)))
+    return empty_gate
