@@ -1,0 +1,42 @@
+[project]
+name = "bitbucket-pr-review-mcp"
+version = "0.1.0"
+description = "MCP server that reads Bitbucket Cloud pull requests and comments on them"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastmcp>=3.4.4,<4.0.0",
+    "httpx>=0.28",
+    "pydantic-settings>=2.6",
+    "loguru>=0.7",
+    "pyyaml>=6.0",
+]
+
+[project.scripts]
+bb-pr-mcp = "bitbucket_pr_review_mcp.__main__:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.8",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bitbucket_pr_review_mcp"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["A", "B", "E", "F", "I", "UP"]

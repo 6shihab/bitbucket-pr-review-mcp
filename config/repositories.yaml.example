@@ -1,0 +1,15 @@
+# The Allowlisted Repository set — the repositories this server may touch at all.
+#
+# Copy to repositories.yaml and enumerate your own. The server refuses to start if this
+# file is missing or lists nothing: an absent list is indistinguishable from permission
+# to reach every repository the credential can.
+#
+# Wildcards are refused. A pattern is how "every repository I can reach" becomes the
+# accidental default, and this list is load-bearing — Bitbucket sells no permission that
+# separates commenting from merging, so see docs/adr/0002-comment-only-blast-radius.md.
+#
+# No secrets belong in this file. It is meant to be committed.
+
+repositories:
+  - streamstech/db-explorer
+  - streamstech/lent-manager
