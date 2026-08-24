@@ -20,7 +20,8 @@ from bitbucket_pr_review_mcp.setup_listener import SetupListener
 from bitbucket_pr_review_mcp.verify import Identity
 
 GOOD_SCOPES = (
-    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+    "read:user:bitbucket, read:repository:bitbucket, "
+    "read:pullrequest:bitbucket, write:pullrequest:bitbucket"
 )
 
 

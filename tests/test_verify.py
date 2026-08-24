@@ -12,7 +12,8 @@ from bitbucket_pr_review_mcp.verify import verify_credential
 from . import fixtures
 
 GOOD_SCOPES = (
-    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+    "read:user:bitbucket, read:repository:bitbucket, "
+    "read:pullrequest:bitbucket, write:pullrequest:bitbucket"
 )
 
 

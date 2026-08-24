@@ -59,3 +59,23 @@ This ticket brings the credential that makes capture possible, but not a live ac
 or a real Pull Request, so `tests/fixtures.py` remains modelled on documented shapes.
 The first Reviewer to run `--check` against a real workspace should record
 `GET /2.0/user` and one pull request and replace those bodies.
+
+## What the first two real tokens taught us (2026-08-24)
+
+The required-scope set was wrong twice, and neither error was visible from the
+documentation or from a fixture. Both were found by pasting a real token in.
+
+1. **`GET /2.0/user` needs `read:user:bitbucket`.** Without it Bitbucket answers 403, so
+   setup cannot show the Reviewer whose account it just connected — and ticket 05 cannot
+   recognise this server's own comments, which is what stops a re-review stacking
+   duplicate summaries.
+2. **Granular scopes do not nest.** `write:pullrequest:bitbucket` does *not* grant
+   reading a pull request. A token with write and no read authenticates, passes a scope
+   check that only looks for the write scope, and then 403s on
+   `GET .../pullrequests/{id}` — the first request any review makes. The older
+   app-password scope `pullrequest:write` *did* imply read, which is exactly the sort of
+   asymmetry that survives in nobody's memory.
+
+Four scopes are required: `read:user:bitbucket`, `read:repository:bitbucket`,
+`read:pullrequest:bitbucket`, `write:pullrequest:bitbucket`. `--check` now exits 2 on a
+token missing any of them rather than letting a review discover it half way through.

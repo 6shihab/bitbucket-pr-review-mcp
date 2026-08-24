@@ -7,7 +7,8 @@ import pytest
 from bitbucket_pr_review_mcp.scopes import review_scopes
 
 GOOD_SCOPES = (
-    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+    "read:user:bitbucket, read:repository:bitbucket, "
+    "read:pullrequest:bitbucket, write:pullrequest:bitbucket"
 )
 
 
@@ -43,6 +44,24 @@ class TestATokenWithoutTheUserScope:
         assert "read:user:bitbucket" in result.shortfall()
 
 
+class TestATokenThatCanWriteButNotRead:
+    """Granular scopes do not nest. A token with write:pullrequest and no
+    read:pullrequest authenticates fine and then 403s on the first thing a review does."""
+
+    def test_writing_a_pull_request_does_not_imply_reading_one(self):
+        result = verdict(
+            "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+        )
+
+        assert not result.complete
+        assert "read:pullrequest:bitbucket" in result.shortfall()
+
+    def test_the_older_app_password_scope_did_imply_it(self):
+        result = verdict("account, repository, pullrequest:write")
+
+        assert result.complete
+
+
 class TestATokenThatIsTooPowerful:
     @pytest.mark.parametrize(
         "scope",
@@ -76,7 +95,9 @@ class TestATokenThatIsTooPowerful:
 
 class TestATokenThatIsTooWeak:
     def test_a_read_only_token_is_incomplete(self):
-        result = verdict("read:user:bitbucket, read:repository:bitbucket")
+        result = verdict(
+            "read:user:bitbucket, read:repository:bitbucket, read:pullrequest:bitbucket"
+        )
 
         assert result.acceptable
         assert not result.complete

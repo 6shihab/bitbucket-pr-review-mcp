@@ -34,13 +34,21 @@ TOKEN_PAGE = "https://id.atlassian.com/manage-profile/security/api-tokens"
 # without it fails at the first tool call rather than degrading.
 USER_READ = frozenset({"read:user:bitbucket", "account"})
 REPOSITORY_READ = frozenset({"read:repository:bitbucket", "repository"})
+PULL_REQUEST_READ = frozenset({"read:pullrequest:bitbucket", "pullrequest", "pullrequest:write"})
 PULL_REQUEST_WRITE = frozenset({"write:pullrequest:bitbucket", "pullrequest:write"})
 
 REQUIRED = (
     "read:user:bitbucket",
     "read:repository:bitbucket",
+    "read:pullrequest:bitbucket",
     "write:pullrequest:bitbucket",
 )
+
+# Granular scope pairs are independent: `write:pullrequest:bitbucket` does not let you
+# read one. A token with write but not read authenticates, passes every check that only
+# looks at the write scope, and then 403s on `GET .../pullrequests/{id}` — which is the
+# first thing any review does. Learned from a real token, not from the documentation.
+_ALTERNATIVES = (USER_READ, REPOSITORY_READ, PULL_REQUEST_READ, PULL_REQUEST_WRITE)
 
 # Read-only scopes we tolerate alongside the required pair: they widen what can be read,
 # never what can be changed, and Atlassian grants some of them implicitly.
@@ -73,14 +81,21 @@ class ScopeVerdict:
             f"{', '.join(self.excessive)}. It reads repositories and writes to pull "
             "requests, and a token that can also write to, administer, or run anything "
             "else turns a commenting tool into a much larger blast radius (ADR-0002). "
-            f"Create a token at {TOKEN_PAGE} with only {' and '.join(REQUIRED)}."
+            f"Create a token at {TOKEN_PAGE} with only these: {_listed(REQUIRED)}."
         )
 
     def shortfall(self) -> str:
         return (
             f"This token is missing {', '.join(self.missing)}. Reviews will fail part-way "
-            f"through. Create a token at {TOKEN_PAGE} granting {' and '.join(REQUIRED)}."
+            f"through. Create a token at {TOKEN_PAGE} granting {_listed(REQUIRED)}."
         )
+
+
+def _listed(scopes: tuple[str, ...]) -> str:
+    """'a, b and c' — four scopes joined with 'and' throughout read as a shopping list."""
+    if len(scopes) < 2:
+        return "".join(scopes)
+    return f"{', '.join(scopes[:-1])} and {scopes[-1]}"
 
 
 def review_scopes(header: str | None) -> ScopeVerdict:
@@ -93,9 +108,7 @@ def review_scopes(header: str | None) -> ScopeVerdict:
 
     missing = tuple(
         name
-        for name, alternatives in zip(
-            REQUIRED, (USER_READ, REPOSITORY_READ, PULL_REQUEST_WRITE), strict=True
-        )
+        for name, alternatives in zip(REQUIRED, _ALTERNATIVES, strict=True)
         if not (alternatives & set(granted))
     )
     return ScopeVerdict(granted=granted, excessive=excessive, missing=missing, verified=True)

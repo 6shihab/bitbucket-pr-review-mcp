@@ -24,7 +24,8 @@ PORT = 54321
 ORIGIN = f"http://127.0.0.1:{PORT}"
 TODAY = date(2026, 8, 24)
 GOOD_SCOPES = (
-    "read:user:bitbucket, read:repository:bitbucket, write:pullrequest:bitbucket"
+    "read:user:bitbucket, read:repository:bitbucket, "
+    "read:pullrequest:bitbucket, write:pullrequest:bitbucket"
 )
 
 FORM = {

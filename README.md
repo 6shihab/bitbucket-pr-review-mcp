@@ -27,6 +27,8 @@ exactly these scopes:
 - `read:user:bitbucket` — so the server can show you whose account it connected, and
   later recognise its own comments rather than stacking duplicates
 - `read:repository:bitbucket`
+- `read:pullrequest:bitbucket` — granular scopes do not nest, so the write scope below
+  does not let the server read a pull request
 - `write:pullrequest:bitbucket`
 
 Nothing wider: a token that can also write to a repository, administer one, or run
