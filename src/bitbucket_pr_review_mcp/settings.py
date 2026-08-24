@@ -129,3 +129,4 @@ class Settings(BaseSettings):
     max_directory_entries: int = 200
     max_commits: int = 50
     max_search_results: int = 25
+    max_comments: int = 200

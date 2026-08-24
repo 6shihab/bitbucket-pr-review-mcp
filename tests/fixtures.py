@@ -12,6 +12,8 @@ from __future__ import annotations
 
 from typing import Any
 
+OUR_ACCOUNT_ID = "5f8a1b2c3d4e5f6071829304"
+
 BASIS = "9f2c4a1b7e5d"
 OLD_BASIS = "111111111111"
 
@@ -60,7 +62,7 @@ def current_user(display_name: str = "Anwar Hossain") -> dict[str, Any]:
         "type": "user",
         "display_name": display_name,
         "nickname": "anwar",
-        "account_id": "5f8a1b2c3d4e5f6071829304",
+        "account_id": OUR_ACCOUNT_ID,
         "uuid": "{b4d2e8f1-3c5a-4e7b-9d1f-2a6c8e0b4d7f}",
     }
 
@@ -263,3 +265,74 @@ def search(*, full_name: str = "streamstech/db-explorer") -> dict[str, Any]:
             }
         ],
     }
+
+
+def comments() -> dict[str, Any]:
+    """GET .../pullrequests/{id}/comments — a conversation with one of ours in it."""
+    return {
+        "pagelen": 100,
+        "size": 5,
+        "values": [
+            _comment(
+                1001,
+                "Nusrat Jahan",
+                "9a8b7c6d5e4f",
+                "The retry loop needs a ceiling, or a slow upstream becomes an outage.",
+            ),
+            _comment(
+                1002,
+                "Anwar Hossain",
+                OUR_ACCOUNT_ID,
+                "HIGH severity: `RETRIES` is read before it is defined on the failure path.",
+                inline={"path": "src/app/retry.py", "from": None, "to": 14},
+            ),
+            _comment(
+                1003,
+                "Anwar Hossain",
+                OUR_ACCOUNT_ID,
+                "MEDIUM: this session is never closed.",
+                inline={"path": "src/app/retry.py", "from": None, "to": 51, "outdated": True},
+            ),
+            _comment(
+                1004,
+                "Nusrat Jahan",
+                "9a8b7c6d5e4f",
+                "This line was doing something. Why remove it?",
+                inline={"path": "src/app/retry.py", "from": 40, "to": None},
+            ),
+            _comment(
+                1005,
+                "Md Shihabul Hasan Shihab",
+                "1122334455",
+                "Agreed, will add the ceiling.",
+                parent_id=1002,
+            ),
+        ],
+    }
+
+
+def _comment(
+    comment_id: int,
+    author: str,
+    account_id: str,
+    body: str,
+    *,
+    inline: dict[str, Any] | None = None,
+    parent_id: int | None = None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": comment_id,
+        "type": "pullrequest_comment",
+        "created_on": "2026-08-22T09:14:22.000000+00:00",
+        "updated_on": "2026-08-22T09:14:22.000000+00:00",
+        "content": {"raw": body, "markup": "markdown", "html": f"<p>{body}</p>"},
+        "user": {"type": "user", "display_name": author, "account_id": account_id},
+        "deleted": False,
+        "pending": False,
+        "links": {"self": {"href": "https://api.bitbucket.org/2.0/..."}},
+    }
+    if inline is not None:
+        payload["inline"] = inline
+    if parent_id is not None:
+        payload["parent"] = {"id": parent_id}
+    return payload

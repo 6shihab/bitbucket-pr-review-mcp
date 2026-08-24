@@ -367,3 +367,46 @@ class TestTheRepositoryTools:
         )
 
         assert wire.last.url.params["search_query"] == "repo:db-explorer call_upstream"
+
+
+class TestTheCommentsTool:
+    async def test_it_is_registered(self, server):
+        names = [tool.name for tool in await server.list_tools()]
+
+        assert "bitbucket_get_pr_comments" in names
+
+    async def test_it_asks_who_we_are_before_deciding_what_is_ours(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.comments()),
+        )
+
+        result = await server.call_tool("bitbucket_get_pr_comments", {"pull_request": PR})
+
+        assert [request.url.path for request in wire.requests][0] == "/2.0/user"
+        assert "ours" in text_of(result)
+
+    async def test_a_credential_that_cannot_read_its_account_still_lists_comments(
+        self, server, wire
+    ):
+        wire.will_return(
+            httpx.Response(403, json={"error": {"message": "no"}}),
+            httpx.Response(200, json=fixtures.comments()),
+        )
+
+        result = await server.call_tool("bitbucket_get_pr_comments", {"pull_request": PR})
+
+        assert "read:user:bitbucket" in text_of(result)
+        assert "retry loop" in text_of(result), "the conversation is still worth reading"
+
+    async def test_who_we_are_is_asked_once_across_calls(self, server, wire):
+        wire.will_return(
+            httpx.Response(200, json=fixtures.current_user()),
+            httpx.Response(200, json=fixtures.comments()),
+            httpx.Response(200, json=fixtures.comments()),
+        )
+
+        await server.call_tool("bitbucket_get_pr_comments", {"pull_request": PR})
+        await server.call_tool("bitbucket_get_pr_comments", {"pull_request": PR})
+
+        assert [r.url.path for r in wire.requests].count("/2.0/user") == 1

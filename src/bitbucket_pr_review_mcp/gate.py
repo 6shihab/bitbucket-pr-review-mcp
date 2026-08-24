@@ -64,6 +64,7 @@ class CredentialGate:
         self._today = today
         self._rejected = False
         self._held: StoredCredential | None = None
+        self._on_new_credential: list[Callable[[], None]] = []
 
     def current(self) -> Credential:
         """The credential to use right now, or an error naming the setup URL."""
@@ -78,6 +79,11 @@ class CredentialGate:
                 f"The stored credential expired on {stored.expires_on.isoformat()}."
             )
         return stored.credential
+
+    def when_credential_changes(self, forget: Callable[[], None]) -> None:
+        """Anything cached per-credential registers here. A new credential is a new
+        account, and a stale answer to "is this comment ours?" is worse than no answer."""
+        self._on_new_credential.append(forget)
 
     def stored(self) -> StoredCredential | None:
         """What is in the keychain, expired or not. Raises if the keychain is unreachable.
@@ -94,6 +100,8 @@ class CredentialGate:
     def accept_saved(self, stored: StoredCredential) -> None:
         """Called by the listener when the Reviewer completes setup."""
         self._rejected, self._held = False, stored
+        for forget in self._on_new_credential:
+            forget()
         logger.info("Credential accepted for {}.", stored.credential.email)
 
     def report_unauthorized(self) -> None:

@@ -16,8 +16,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
+from loguru import logger
 
-from .client import BitbucketClient
+from .client import BitbucketClient, BitbucketError
 from .credentials import Credential
 from .scopes import SCOPE_HEADER, ScopeVerdict, review_scopes
 from .settings import Allowlist
@@ -49,3 +50,49 @@ async def verify_credential(
         )
     finally:
         await client.aclose()
+
+
+class KnownIdentity:
+    """Who this server posts as, asked once per process.
+
+    Every comment read has to answer "is this ours?", and the answer is our own account
+    id — so this would otherwise be a `/2.0/user` round trip per tool call. It is cached
+    for the life of the process because the credential is fixed for the life of the
+    process; `forget` exists for the one case that is not true, a credential replaced by
+    setup mid-session.
+
+    A failure is remembered as "unknown" rather than retried on every call, and unknown
+    is reported as unknown. Guessing "not ours" here would let a re-review stack
+    duplicate summaries; guessing "ours" would let it edit somebody else's comment.
+    """
+
+    def __init__(self) -> None:
+        self._identity: Identity | None = None
+        self._asked = False
+
+    async def of(self, client: BitbucketClient) -> Identity | None:
+        if not self._asked:
+            self._asked = True
+            self._identity = await self._ask(client)
+        return self._identity
+
+    async def account_id(self, client: BitbucketClient) -> str | None:
+        identity = await self.of(client)
+        return identity.account_id if identity and identity.account_id else None
+
+    def forget(self) -> None:
+        self._identity, self._asked = None, False
+
+    async def _ask(self, client: BitbucketClient) -> Identity | None:
+        try:
+            response = await client.request("GET", "/2.0/user")
+        except BitbucketError as exc:
+            logger.warning("Cannot read this server's own account: {}", exc)
+            return None
+
+        body = response.json()
+        return Identity(
+            display_name=body.get("display_name") or "",
+            account_id=body.get("account_id", ""),
+            scopes=review_scopes(response.headers.get(SCOPE_HEADER)),
+        )

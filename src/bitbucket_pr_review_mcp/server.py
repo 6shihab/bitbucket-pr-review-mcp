@@ -20,6 +20,7 @@ from pydantic import Field
 
 from .changes import fetch_changes
 from .client import BitbucketClient, BitbucketError, Unauthorized, build_http_client
+from .comments import fetch_comments
 from .commits import AmbiguousRequest, fetch_commits
 from .credentials import Credential, CredentialError
 from .diffs import DiffCache, PathNotInDiff, diff_markdown, fetch_diff, select
@@ -31,6 +32,7 @@ from .repositories import fetch_repository
 from .search import UnsafeQuery, search_code
 from .settings import Allowlist, Settings
 from .source import UnreadablePath, fetch_directory, fetch_file
+from .verify import KnownIdentity
 
 SERVER_INSTRUCTIONS = """\
 Read and comment on Bitbucket Cloud pull requests.
@@ -45,6 +47,10 @@ Then read the change before reading code: bitbucket_get_pull_request_changes lis
 changed file with its line counts and flags the ones rarely worth commenting on, and
 bitbucket_get_pull_request_diff gives you the whole diff or one file at a time. Reading
 file by file is cheap — the diff is fetched once per Review Basis and sliced locally.
+
+Read bitbucket_get_pr_comments before you write anything. Repeating a point a colleague
+already made, or talking past an open thread, is the fastest way to make a review worth
+ignoring.
 
 Two things this server will never do, by construction: approve, decline or merge a pull
 request, and delete a comment. Do not plan around either.
@@ -145,6 +151,8 @@ def build_server(
 
     mcp: FastMCP = FastMCP(name="bitbucket-pr-review", instructions=SERVER_INSTRUCTIONS)
     diffs = DiffCache()
+    whoami = KnownIdentity()
+    gate.when_credential_changes(whoami.forget)
 
     @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
@@ -209,6 +217,27 @@ def build_server(
 
         logger.debug("Read diff for {} ({})", ref, path or "all files")
         return diff_markdown(ref, diff, file, limit=settings.max_diff_characters)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
+        description=(
+            "Read the comments already on a pull request: who wrote each one, what it "
+            "says, whether it is inline or a summary, what it is anchored to, whether "
+            "that anchor has gone stale, and which ones this server wrote. Read this "
+            "before writing, so you answer the conversation instead of restarting it."
+        ),
+    )
+    async def bitbucket_get_pr_comments(pull_request: PullRequestArg) -> str:
+        ref = _reference(pull_request)
+
+        async def work(client: BitbucketClient):
+            ours = await whoami.account_id(client)
+            return await fetch_comments(client, ref, ours, settings.max_comments)
+
+        conversation = await with_bitbucket(work)
+
+        logger.debug("Read {} comments on {}", conversation.total, ref)
+        return conversation.to_markdown()
 
     @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
