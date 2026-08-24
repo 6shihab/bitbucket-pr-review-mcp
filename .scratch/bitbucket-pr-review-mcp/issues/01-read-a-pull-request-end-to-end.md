@@ -25,15 +25,21 @@ stopgap so a Reviewer can demo a working read before the credential system exist
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done — except one criterion, noted below
 
-- [ ] `bitbucket_get_pull_request` accepts a full Bitbucket URL and returns title, state, author, both branch names, description and Review Basis
-- [ ] The same tool accepts the workspace/repo/id shorthand and resolves to the same Pull Request
-- [ ] A malformed reference is rejected with an error naming both accepted forms
-- [ ] The server refuses to start when the allowlist is missing, empty, or a wildcard
-- [ ] A request against a repository outside the allowlist is refused before any HTTP request is made
-- [ ] The write chokepoint refuses merge, approve, decline and repository-write URLs however they are constructed, and refuses DELETE anywhere
-- [ ] Every safety property above is exercised as a plain function call against an injected transport, with no MCP client and no network
-- [ ] Nothing is ever written to stdout except MCP protocol messages
-- [ ] The check flag reports configuration and credential status and exits with a meaningful shell status
+- [x] `bitbucket_get_pull_request` accepts a full Bitbucket URL and returns title, state, author, both branch names, description and Review Basis
+- [x] The same tool accepts the workspace/repo/id shorthand and resolves to the same Pull Request
+- [x] A malformed reference is rejected with an error naming both accepted forms
+- [x] The server refuses to start when the allowlist is missing, empty, or a wildcard
+- [x] A request against a repository outside the allowlist is refused before any HTTP request is made
+- [x] The write chokepoint refuses merge, approve, decline and repository-write URLs however they are constructed, and refuses DELETE anywhere
+- [x] Every safety property above is exercised as a plain function call against an injected transport, with no MCP client and no network
+- [x] Nothing is ever written to stdout except MCP protocol messages
+- [x] The check flag reports configuration and credential status and exits with a meaningful shell status
 - [ ] Response fixtures are captured from real Bitbucket responses, not hand-authored
+      **NOT MET.** The fixtures are modelled on Bitbucket's documented response shapes,
+      not recorded from a live API — capturing real ones needs a credential and a real
+      pull request, which this ticket has no way to obtain. Ticket 02 brings the
+      credential; the first real capture should replace the bodies in the test fixtures,
+      keeping field names and nesting honest. Until then every test at the transport seam
+      is only as trustworthy as an assumption about the API.
