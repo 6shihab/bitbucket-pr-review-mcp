@@ -555,3 +555,10 @@ class TestPostingAComment:
             for name in arguments
             for word in ("footer", "attribution", "suppress", "anonymous")
         )
+
+
+class TestWhatTheServerSaysItIs:
+    async def test_it_reports_its_own_version_not_a_dependencys(self, server):
+        from bitbucket_pr_review_mcp import __version__
+
+        assert server.version == __version__

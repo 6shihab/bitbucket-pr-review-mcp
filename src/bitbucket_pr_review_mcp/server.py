@@ -18,6 +18,7 @@ from loguru import logger
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .anchors import SIDES, AnchorNotInDiff
 from .changes import fetch_changes
 from .client import BitbucketClient, BitbucketError, Unauthorized, build_http_client
@@ -380,7 +381,13 @@ def build_server(
         finally:
             await client.aclose()
 
-    mcp: FastMCP = FastMCP(name="bitbucket-pr-review", instructions=SERVER_INSTRUCTIONS)
+    # Our version, not FastMCP's: a client that reports "3.4.7" for this server is
+    # telling its user about a dependency they have never heard of.
+    mcp: FastMCP = FastMCP(
+        name="bitbucket-pr-review",
+        instructions=SERVER_INSTRUCTIONS,
+        version=__version__,
+    )
     diffs = DiffCache()
     whoami = KnownIdentity()
     gate.when_credential_changes(whoami.forget)

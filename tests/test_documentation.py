@@ -1,0 +1,166 @@
+"""The documentation, checked against the thing it documents.
+
+Prose rots quietly. A tool renamed in `server.py` and left stale in the README is a
+teammate's wasted afternoon, and the architecture document is worth nothing if it
+describes a shape the code no longer has. These are the claims that can be checked
+mechanically; the rest is the reader's job.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from bitbucket_pr_review_mcp.gate import CredentialGate
+from bitbucket_pr_review_mcp.scopes import REQUIRED
+from bitbucket_pr_review_mcp.server import build_server
+from bitbucket_pr_review_mcp.settings import Settings
+
+ROOT = Path(__file__).resolve().parents[1]
+README = (ROOT / "README.md").read_text(encoding="utf-8")
+ARCHITECTURE = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
+ADRS = sorted((ROOT / "docs" / "adr").glob("*.md"))
+
+
+def flat(prose: str) -> str:
+    """Collapse wrapping, so a phrase test is about the words rather than the column."""
+    return " ".join(prose.split())
+
+
+FLAT_README = flat(README)
+FLAT_ARCHITECTURE = flat(ARCHITECTURE)
+
+
+@pytest.fixture
+def tool_names(wire, allowlist, keychain, setup_listener):
+    async def names():
+        server = build_server(Settings(), allowlist, CredentialGate(keychain, setup_listener))
+        return [tool.name for tool in await server.list_tools()]
+
+    return names
+
+
+class TestTheToolTable:
+    async def test_every_registered_tool_is_documented(self, tool_names):
+        undocumented = [name for name in await tool_names() if name not in README]
+
+        assert undocumented == []
+
+    async def test_the_readme_invents_no_tools(self, tool_names):
+        registered = set(await tool_names())
+        claimed = set(re.findall(r"`(bitbucket_[a-z_]+)`", README))
+
+        assert claimed - registered == set()
+
+    async def test_there_are_the_eleven_adr_0005_agreed_on(self, tool_names):
+        assert len(await tool_names()) == 11
+
+
+class TestTheSettingsTable:
+    def test_every_setting_is_documented(self):
+        undocumented = [
+            name
+            for name in Settings.model_fields
+            if f"BB_MCP_{name.upper()}" not in README
+        ]
+
+        assert undocumented == []
+
+    def test_the_documented_defaults_are_the_real_ones(self):
+        settings = Settings()
+
+        assert f"| `BB_MCP_LOG_LEVEL` | `{settings.log_level}` |" in README
+        assert f"| `BB_MCP_MAX_COMMENTS` | `{settings.max_comments}` |" in README
+
+
+class TestTheAdrs:
+    def test_every_adr_is_referenced_from_the_architecture_document(self):
+        unreferenced = [adr.name for adr in ADRS if adr.name not in ARCHITECTURE]
+
+        assert unreferenced == []
+
+    def test_every_link_from_the_architecture_document_resolves(self):
+        links = re.findall(r"\]\((\.\./?[^)#]+)", ARCHITECTURE)
+        missing = [link for link in links if not (ROOT / "docs" / link).resolve().exists()]
+
+        assert missing == []
+
+    def test_the_architecture_document_is_linked_from_the_readme(self):
+        assert "docs/architecture.md" in README
+
+
+class TestTheHonestClaim:
+    """The one thing this documentation must not soften: the credential can merge."""
+
+    def test_the_architecture_document_says_bitbucket_will_not_enforce_the_ceiling(self):
+        assert "no permission that separates commenting from merging" in FLAT_ARCHITECTURE
+        assert "does not claim it" in FLAT_ARCHITECTURE
+
+    def test_it_names_all_four_mechanisms_including_the_one_we_cannot_impose(self):
+        for mechanism in ["No such tool exists", "chokepoint", "Nothing deletes",
+                          "Branch restrictions"]:
+            assert mechanism in FLAT_ARCHITECTURE
+
+    def test_the_readme_makes_branch_restrictions_a_prerequisite(self):
+        assert "Before you start" in README
+        assert "Branch restrictions" in README
+        assert README.index("Branch restrictions") < README.index("## Install")
+
+
+class TestTheSetupInstructions:
+    def test_all_four_scopes_are_named(self):
+        for scope in REQUIRED:
+            assert scope in README
+
+    def test_the_identifier_is_named_as_the_atlassian_account_email(self):
+        assert "Atlassian account email" in FLAT_README
+        assert "not your Bitbucket username" in FLAT_README
+
+    def test_the_install_commands_are_the_same_on_every_platform(self):
+        assert "uv sync" in README
+        assert "Windows, macOS and Linux" in README
+
+
+class TestTheAllowlistExample:
+    EXAMPLE = ROOT / "config" / "repositories.yaml.example"
+
+    def test_it_is_committed(self):
+        assert self.EXAMPLE.exists()
+
+    def test_it_holds_no_secrets(self):
+        """Not "the word secret never appears" — it appears in the warning not to put one
+        here. Nothing that looks like a credential being *assigned* a value."""
+        body = self.EXAMPLE.read_text(encoding="utf-8").lower()
+
+        assert not re.search(r"^\s*(token|password|secret|api_key)\s*:", body, re.MULTILINE)
+        assert "atatt" not in body, "an Atlassian API token"
+
+    def test_it_parses_as_the_allowlist_it_claims_to_be(self):
+        from bitbucket_pr_review_mcp.settings import load_allowlist
+
+        assert load_allowlist(self.EXAMPLE).names()
+
+
+class TestTheFactsWorthKeeping:
+    """Each of these was expensive to find, and three of them were found by being wrong."""
+
+    @pytest.mark.parametrize(
+        "fact",
+        [
+            "no `path` parameter",
+            "answer with a 302",
+            "abbreviated to twelve characters",
+            "carries no repository field",
+            "Granular scopes do not nest",
+            "read:user:bitbucket",
+            "start_from` and `start_to",
+            "Deletion is a tombstone",
+            "escapes HTML",
+            "does not support PKCE",
+            "app passwords were removed",
+        ],
+    )
+    def test_the_fact_is_recorded(self, fact):
+        assert fact in FLAT_ARCHITECTURE

@@ -1,7 +1,7 @@
 # The server can only comment — and Bitbucket will not help us enforce it
 
 This server writes to production pull requests, so its ceiling is drawn deliberately:
-it may create, update and delete comments and nothing else. No approve, no
+it may create and update comments and nothing else. No approve, no
 request-changes, no merge, no decline, no pull request create or edit, no branch or
 file writes, no repository administration.
 
