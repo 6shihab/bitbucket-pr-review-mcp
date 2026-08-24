@@ -145,11 +145,37 @@ class TestStartup:
 
 
 class TestTheSetupCommand:
-    def test_it_returns_zero_once_a_credential_is_in_the_keychain(self, gate, setup_listener):
+    def test_it_waits_for_a_credential_to_be_entered_not_merely_to_exist(
+        self, gate, setup_listener, monkeypatch
+    ):
+        """This command is how a working token gets replaced. A version that stopped as
+        soon as it found one would close the page before the Reviewer had used it."""
+        from bitbucket_pr_review_mcp import __main__ as entrypoint
+
+        monkeypatch.setattr(entrypoint, "SETUP_WAIT_SECONDS", 0.1)
+
+        assert entrypoint._run_setup(gate) == 1, "a credential already stored is not a save"
+        assert setup_listener.starts == 1
+
+    def test_it_returns_zero_when_the_reviewer_saves_one(self, gate, setup_listener):
+        from datetime import date
+
         from bitbucket_pr_review_mcp.__main__ import _run_setup
+        from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
+
+        saved = StoredCredential(
+            credential=Credential(email="new@streamstech.com", token="fresh"),
+            expires_on=date(2099, 1, 1),
+        )
+
+        def save_as_soon_as_it_opens(on_saved):
+            setup_listener.starts += 1
+            on_saved(saved)
+            return setup_listener.URL
+
+        setup_listener.start = save_as_soon_as_it_opens
 
         assert _run_setup(gate) == 0
-        assert setup_listener.starts == 1
 
     def test_it_gives_up_and_says_so_when_setup_is_never_completed(
         self, empty_gate, setup_listener, monkeypatch

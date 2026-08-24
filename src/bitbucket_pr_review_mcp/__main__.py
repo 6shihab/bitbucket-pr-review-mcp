@@ -24,7 +24,7 @@ from loguru import logger
 
 from . import __version__
 from .client import BitbucketError, Unauthorized, build_http_client
-from .credentials import Credential, CredentialError
+from .credentials import Credential, CredentialError, StoredCredential
 from .gate import CredentialGate
 from .keychain import Keychain
 from .server import build_server
@@ -204,20 +204,33 @@ async def _run_check(
 
 
 def _run_setup(gate: CredentialGate) -> int:
-    """Open the setup page deliberately, and wait for the Reviewer to finish."""
-    logger.info("Open this page to connect Bitbucket:\n    {}", gate.open_setup())
+    """Open the setup page deliberately, and wait for a credential to be entered.
+
+    Entered, not merely present. This command is how a Reviewer replaces a token that
+    still works — after an expiry warning, or because the old one leaked — and a version
+    that stopped as soon as it found *a* credential would close the page before they had
+    a chance to use it.
+    """
+    entered: list[StoredCredential] = []
+    replacing = gate.stored() is not None
+
+    logger.info(
+        "Open this page to {} Bitbucket:\n    {}",
+        "replace the credential for" if replacing else "connect",
+        gate.open_setup(entered.append),
+    )
+    if replacing:
+        logger.info("The credential already stored keeps working until you save a new one.")
 
     deadline = time.monotonic() + SETUP_WAIT_SECONDS
-    while time.monotonic() < deadline:
-        try:
-            gate.current()
-        except CredentialError:
-            time.sleep(0.25)
-            continue
-        logger.info("Connected. Start your MCP client as usual.")
-        return 0
+    while time.monotonic() < deadline and not entered:
+        time.sleep(0.25)
 
     gate.close()
+    if entered:
+        logger.info("Connected as {}. Start your MCP client as usual.", entered[0].email)
+        return 0
+
     logger.error("Setup was not completed. Run this again for a fresh link.")
     return 1
 

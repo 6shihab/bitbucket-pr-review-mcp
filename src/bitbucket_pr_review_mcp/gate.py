@@ -131,9 +131,20 @@ class CredentialGate:
     def close(self) -> None:
         self._setup.stop()
 
-    def open_setup(self) -> str:
-        """Open setup deliberately — startup and `--setup`, never a tool call."""
-        return self._setup.start(self.accept_saved)
+    def open_setup(self, on_saved: Callable[[StoredCredential], None] | None = None) -> str:
+        """Open setup deliberately — startup and `--setup`, never a tool call.
+
+        `on_saved` is for a caller that needs to know a credential was *entered*, which
+        is not the same question as whether one exists: `--setup` run to replace a
+        working token would otherwise see the old one and declare victory immediately.
+        """
+
+        def saved(stored: StoredCredential) -> None:
+            self.accept_saved(stored)
+            if on_saved is not None:
+                on_saved(stored)
+
+        return self._setup.start(saved)
 
     def _open(self, because: str) -> SetupRequired:
         return SetupRequired(self.open_setup(), because)
