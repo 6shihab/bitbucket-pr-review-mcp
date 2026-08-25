@@ -5,7 +5,7 @@
       "args": [
         "-y",
         "mcp-remote",
-        "http://localhost:8000/mcp",
+        "http://localhost:8080/mcp",
         "3334",
         "--allow-http",
         "--static-oauth-client-info",

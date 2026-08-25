@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REALM = json.loads(
     (ROOT / "deploy" / "keycloak" / "realm-streamstech.json").read_text(encoding="utf-8")
 )
-COMPOSE = (ROOT / "docker-compose.shared.yaml").read_text(encoding="utf-8")
+COMPOSE = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
 PUBLIC_HOST = "https://review.streamstech.com"
 
 CLIENTS = {client["clientId"]: client for client in REALM["clients"]}
@@ -73,6 +73,27 @@ class TestTheAudienceMapper:
         audience = mappers(REVIEW_SCOPE)["mcp-audience"]["config"]["included.custom.audience"]
 
         assert ProtectedResource.of(audience, "https://example.com/realms/x").resource == audience
+
+    def test_it_mints_the_audience_this_deployment_actually_expects(self):
+        """Found by moving the server to another port and leaving the realm behind: the
+        token was minted with the old audience, the resource server refused it, and the
+        symptom was a 401 immediately after a *successful* sign-in. Two files have to
+        agree and neither one shows the other."""
+        import re
+
+        audience = mappers(REVIEW_SCOPE)["mcp-audience"]["config"]["included.custom.audience"]
+        expected = re.search(r"BB_MCP_PUBLIC_URL:\s*(\S+)", COMPOSE).group(1)
+
+        assert audience == expected
+
+    def test_the_issuer_the_realm_serves_is_the_one_configured(self):
+        """Same class of drift, other half of the handshake."""
+        import re
+
+        hostname = re.search(r"KC_HOSTNAME:\s*(\S+)", COMPOSE).group(1)
+        issuer = re.search(r"BB_MCP_OIDC_ISSUER:\s*(\S+)", COMPOSE).group(1)
+
+        assert issuer.startswith(hostname + "/realms/")
 
     def test_it_lives_on_the_optional_scope_so_an_unasked_token_has_no_audience(self):
         """Defence in depth, and it fell out of making the scope optional: a token that

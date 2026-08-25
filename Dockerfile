@@ -40,11 +40,17 @@ ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     BB_MCP_REPOSITORIES_FILE=/config/repositories.yaml
 
+# The shared deployment's credential store lives here. Created in the image, and owned
+# by the user that runs, so a named volume mounted over it inherits that ownership —
+# otherwise the volume arrives owned by root and the server cannot write its own vault.
+RUN mkdir -p /vault && chown reviewer:reviewer /vault
+
 USER reviewer
 
-# The allowlist is mounted, not baked in: it names the repositories this server may
-# touch, and that list belongs to whoever runs it rather than to the image.
-VOLUME ["/config"]
+# Neither is baked in. The allowlist names the repositories this server may touch, and
+# that list belongs to whoever runs it rather than to the image; the vault holds other
+# people's credentials, and an image is not where those go.
+VOLUME ["/config", "/vault"]
 
 # `--check` is the honest health check for a stdio process: it proves the allowlist
 # parses and the credential works, and exits with a status. It is not a liveness probe —

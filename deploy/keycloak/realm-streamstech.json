@@ -61,7 +61,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "http://localhost:8000/mcp",
+            "included.custom.audience": "http://localhost:8080/mcp",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"
@@ -176,7 +176,7 @@
       "serviceAccountsEnabled": false,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "http://localhost:8000/connect/callback",
+        "http://localhost:8080/connect/callback",
         "https://review.streamstech.com/connect/callback"
       ],
       "webOrigins": [],
@@ -202,12 +202,12 @@
       "serviceAccountsEnabled": false,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
-        "http://localhost:3334/oauth/callback",
-        "http://localhost:3335/oauth/callback",
-        "http://localhost:3336/oauth/callback",
         "http://127.0.0.1:3334/oauth/callback",
-        "http://localhost/callback",
-        "http://127.0.0.1/callback"
+        "http://localhost:3334/oauth/callback",
+        "http://127.0.0.1:*/callback",
+        "http://localhost:*/callback",
+        "http://127.0.0.1:*/oauth/callback",
+        "http://localhost:*/oauth/callback"
       ],
       "webOrigins": [],
       "attributes": {

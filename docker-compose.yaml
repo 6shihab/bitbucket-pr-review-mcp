@@ -1,11 +1,22 @@
-# Run the server in a container: `docker compose run --rm bitbucket-pr-review`.
+# Two deployment shapes, one file, one review engine.
 #
-# It speaks MCP over stdio, so there is no port and nothing to `up`. The service exists
-# so the flags below are written down once rather than remembered.
+#   docker compose run --rm bitbucket-pr-review      # per-device: stdio, one credential
+#   docker compose --profile shared up -d            # shared: several people, over HTTP
+#
+# The per-device service is the one described in the README and in docs/adr/0007. It
+# speaks MCP over stdio, so it has no port and nothing to `up` — the service exists so
+# the flags are written down once rather than remembered.
+#
+# THE SHARED PROFILE IS DEVELOPMENT CONFIGURATION. Keycloak runs in dev mode with an
+# in-memory database, a bootstrap admin whose password is in this file, and a realm
+# carrying a user whose password is in the realm file. Everything is plain http on
+# loopback. Read docs/deploying-the-shared-server.md before running it anywhere else.
 services:
+  # ---------------------------------------------------------------- per-device (stdio)
   bitbucket-pr-review:
     build: .
     image: bitbucket-pr-review-mcp:local
+    profiles: ["stdio"]
 
     # stdio is the whole interface.
     stdin_open: true
@@ -27,3 +38,102 @@ services:
     read_only: true
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
+
+  # -------------------------------------------------------------------- shared (HTTP)
+  proxy:
+    image: nginx:1.27-alpine
+    profiles: ["shared"]
+    depends_on:
+      keycloak:
+        condition: service_healthy
+    ports:
+      # One port, one origin. Both the review server and Keycloak are behind it, which
+      # is what makes the issuer string mean the same thing everywhere.
+      - "8080:8080"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/nginx.conf:ro
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/realms/streamstech || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
+  review:
+    build: .
+    image: bitbucket-pr-review-mcp:local
+    profiles: ["shared"]
+    command:
+      ["--http", "--host", "127.0.0.1", "--port", "8000"]
+
+    # Shares the proxy's network namespace, so `localhost:8080` inside this container is
+    # the same address a browser types. Without that the review server cannot fetch the
+    # discovery document for the issuer it was configured with — the one string that has
+    # to be identical in the token, the metadata, the browser and here.
+    network_mode: "service:proxy"
+    depends_on:
+      proxy:
+        condition: service_started
+
+    environment:
+      BB_MCP_PUBLIC_URL: http://localhost:8080/mcp
+      BB_MCP_OIDC_ISSUER: http://localhost:8080/realms/streamstech
+      BB_MCP_OIDC_CLIENT_SECRET: development-only-replace-before-deploying-too
+      BB_MCP_VAULT_FILE: /vault/credentials.sqlite3
+      BB_MCP_VAULT_KEY_FILE: /run/secrets/vault.key
+      BB_MCP_LOG_LEVEL: INFO
+
+    volumes:
+      - ./config/repositories.yaml:/config/repositories.yaml:ro
+      # The key, read-only and from outside the repository. It must not live where the
+      # store's backups reach: that separation is the whole of what the encryption buys.
+      - ${BB_MCP_VAULT_KEY_PATH:-~/.bb-pr-mcp/vault.key}:/run/secrets/vault.key:ro
+      # The store itself, which is the one thing here that must survive a restart.
+      - review-vault:/vault
+
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.4
+    profiles: ["shared"]
+    command: ["start-dev", "--import-realm"]
+
+    environment:
+      # Dev-only bootstrap admin. A real deployment sets these from a secret store.
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+
+      # The issuer people and tokens will name. It has to match what the review server is
+      # configured with, exactly — a token whose `iss` differs by a trailing slash is a
+      # token this server refuses, on purpose (RFC 8414's mix-up defence).
+      KC_HOSTNAME: http://localhost:8080
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+      KC_PROXY_HEADERS: xforwarded
+
+    volumes:
+      # The realm: the three clients, the bitbucket:review scope, and the audience mapper
+      # that puts this server's URL into every access token.
+      #
+      # That mapper is not decoration. Keycloak does not implement RFC 8707, so it
+      # ignores the `resource` parameter Claude sends. Without it, tokens carry no
+      # audience for us and the review server refuses all of them — correctly, because a
+      # token with no audience was not minted for anybody in particular.
+      - ./deploy/keycloak/realm-streamstech.json:/opt/keycloak/data/import/realm-streamstech.json:ro
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "exec 3<>/dev/tcp/localhost/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s
+
+volumes:
+  review-vault:

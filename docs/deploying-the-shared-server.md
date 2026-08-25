@@ -106,7 +106,7 @@ ticked after step one leaves somebody with access they are no longer supposed to
 
 ## What this document does not cover
 
-Running Keycloak. `docker-compose.shared.yaml` is **development configuration** — an
+Running Keycloak. The `shared` profile in `docker-compose.yaml` is **development configuration** — an
 in-memory database, a bootstrap admin whose password is in the file, and a realm carrying
 a user whose password is also in the file. A real deployment gives Keycloak a real
 database, real secrets, and its own backups, and probably federates it to the identity

@@ -238,7 +238,7 @@ machine, performs the OAuth flow in your browser, and speaks HTTP to the server.
 Start the authorization server and the review server:
 
 ```
-docker compose -f docker-compose.shared.yaml up -d keycloak
+docker compose -f docker compose --profile shared up -d
 
 BB_MCP_PUBLIC_URL=http://localhost:8000/mcp BB_MCP_OIDC_ISSUER=http://localhost:8080/realms/streamstech BB_MCP_OIDC_CLIENT_SECRET=development-only-replace-before-deploying-too BB_MCP_VAULT_KEY="$(uv run python -c 'from bitbucket_pr_review_mcp.vault import VaultKey; print(VaultKey.generate().exported())')" uv run bb-pr-mcp --http --port 8000
 ```
@@ -280,7 +280,7 @@ A few things worth knowing:
   registers all of them, because getting it wrong fails at the last step of the flow.
 - **`--allow-http` is required** while the server is on plain http. A real deployment is
   https, and this server refuses to describe itself over http anywhere but loopback.
-- **`docker-compose.shared.yaml` is development configuration.** Its Keycloak has an
+- **the `shared` profile is development configuration.** Its Keycloak has an
   in-memory database and passwords written down in the file.
 
 ### Operating it
