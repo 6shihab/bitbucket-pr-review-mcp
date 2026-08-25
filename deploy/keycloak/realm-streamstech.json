@@ -189,6 +189,38 @@
         "email"
       ],
       "optionalClientScopes": []
+    },
+    {
+      "clientId": "bitbucket-pr-review-cli",
+      "name": "Bitbucket PR Review (local bridge)",
+      "description": "For mcp-remote and Claude Code: a native client on a loopback port. Public rather than confidential, because a secret in a config file on a laptop is not a secret; PKCE is what protects this flow.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "redirectUris": [
+        "http://localhost:3334/oauth/callback",
+        "http://localhost:3335/oauth/callback",
+        "http://localhost:3336/oauth/callback",
+        "http://127.0.0.1:3334/oauth/callback",
+        "http://localhost/callback",
+        "http://127.0.0.1/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "+"
+      },
+      "defaultClientScopes": [
+        "basic"
+      ],
+      "optionalClientScopes": [
+        "offline_access",
+        "bitbucket:review"
+      ]
     }
   ],
   "users": [

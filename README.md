@@ -224,6 +224,65 @@ A few things worth knowing:
   token means restarting with a new one.
 - The container runs as a non-root user, read-only, with every capability dropped.
 
+## Trying the shared server from Claude Desktop
+
+The shared deployment — several people, one server, each with their own Bitbucket
+account — is still being built. What works today is enough to drive end to end locally.
+
+**A Claude Desktop *custom connector* cannot reach `localhost`.** Claude connects to a
+remote MCP server from Anthropic's own infrastructure, not from your machine, so a server
+on your laptop is unreachable however it is configured. The local loop goes through
+[`mcp-remote`](https://www.npmjs.com/package/mcp-remote): a stdio bridge that runs on your
+machine, performs the OAuth flow in your browser, and speaks HTTP to the server.
+
+Start the authorization server and the review server:
+
+```
+docker compose -f docker-compose.shared.yaml up -d keycloak
+
+BB_MCP_PUBLIC_URL=http://localhost:8000/mcp BB_MCP_OIDC_ISSUER=http://localhost:8080/realms/streamstech BB_MCP_OIDC_CLIENT_SECRET=development-only-replace-before-deploying-too BB_MCP_VAULT_KEY="$(uv run python -c 'from bitbucket_pr_review_mcp.vault import VaultKey; print(VaultKey.generate().exported())')" uv run bb-pr-mcp --http --port 8000
+```
+
+Then add this to `claude_desktop_config.json`
+(`%APPDATA%\Claude\` on Windows, `~/Library/Application Support/Claude/` on macOS — a
+Microsoft Store install keeps it under
+`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`):
+
+```json
+{
+  "mcpServers": {
+    "bitbucket-pr-review": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "http://localhost:8000/mcp",
+        "3334",
+        "--allow-http",
+        "--static-oauth-client-info", "{\"client_id\":\"bitbucket-pr-review-cli\"}"
+      ]
+    }
+  }
+}
+```
+
+`deploy/claude_desktop_config.example.json` holds the same thing. Restart Claude Desktop,
+and the first tool call opens a Keycloak login (`dev` / `dev-only-not-for-production` in
+the development realm). After signing in, a tool call answers with a link to
+`/connect`, where you connect your Atlassian account — that page makes the browser sign in
+too, which is why the link is safe to see in a transcript.
+
+A few things worth knowing:
+
+- **The bridge is a *public* OAuth client, with no secret.** A client secret in a config
+  file on a laptop is not a secret; PKCE is what protects a loopback flow.
+- **Its callback is `http://127.0.0.1:3334/oauth/callback`** — the IP literal rather than
+  `localhost`, and `/oauth/callback` rather than Claude Code's `/callback`. The realm
+  registers all of them, because getting it wrong fails at the last step of the flow.
+- **`--allow-http` is required** while the server is on plain http. A real deployment is
+  https, and this server refuses to describe itself over http anywhere but loopback.
+- **`docker-compose.shared.yaml` is development configuration.** Its Keycloak has an
+  in-memory database and passwords written down in the file.
+
 ## The tools
 
 | Tool | What it does |

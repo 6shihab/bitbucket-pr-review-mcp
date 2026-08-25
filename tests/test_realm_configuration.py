@@ -20,8 +20,12 @@ REALM = json.loads(
     (ROOT / "deploy" / "keycloak" / "realm-streamstech.json").read_text(encoding="utf-8")
 )
 COMPOSE = (ROOT / "docker-compose.shared.yaml").read_text(encoding="utf-8")
+PUBLIC_HOST = "https://review.streamstech.com"
 
-CLIENT = REALM["clients"][0]
+CLIENTS = {client["clientId"]: client for client in REALM["clients"]}
+CLIENT = CLIENTS["bitbucket-pr-review"]
+WEB = CLIENTS["bitbucket-pr-review-web"]
+CLI = CLIENTS["bitbucket-pr-review-cli"]
 SCOPES = {scope["name"]: scope for scope in REALM["clientScopes"]}
 
 
@@ -139,3 +143,52 @@ class TestNobodyCanShipThisByAccident:
         """The blast radius of a stolen one, in seconds. ADR-0002's problem does not go
         away, but this bounds how long a leaked token is worth having."""
         assert REALM["accessTokenLifespan"] <= 900
+
+
+class TestTheThreeClients:
+    """Three, because three different things authenticate, and giving them one client
+    would mean one set of redirect URIs and one secret shared by all of them."""
+
+    def test_the_connector_client_is_confidential(self):
+        """Anthropic's servers hold its secret; nothing is on anybody's laptop."""
+        assert CLIENT["publicClient"] is False
+
+    def test_the_web_client_is_confidential(self):
+        """It runs inside this server, which is the only place its secret exists."""
+        assert WEB["publicClient"] is False
+        assert f"{PUBLIC_HOST}/connect/callback" in WEB["redirectUris"] or any(
+            uri.endswith("/connect/callback") for uri in WEB["redirectUris"]
+        )
+
+    def test_the_bridge_client_is_public_and_holds_no_secret(self):
+        """A secret in a config file on a laptop is not a secret. PKCE is the protection
+        a loopback flow actually has."""
+        assert CLI["publicClient"] is True
+        assert "secret" not in CLI
+
+    def test_the_bridge_client_requires_pkce(self):
+        assert CLI["attributes"]["pkce.code.challenge.method"] == "S256"
+
+    def test_it_registers_the_callback_mcp_remote_actually_uses(self):
+        """The IP literal, not `localhost`, and `/oauth/callback`, not `/callback`.
+        Registering only the other spelling fails at the very last step of the flow."""
+        assert "http://127.0.0.1:3334/oauth/callback" in CLI["redirectUris"]
+
+    def test_it_can_ask_for_the_review_scope(self):
+        assert REVIEW_SCOPE in CLI["optionalClientScopes"]
+
+    def test_no_client_grants_the_review_scope_without_being_asked(self):
+        for name, client in CLIENTS.items():
+            assert REVIEW_SCOPE not in client["defaultClientScopes"], name
+
+
+class TestWhatKeycloakItselfWillAccept:
+    @pytest.mark.parametrize(
+        "described",
+        [*REALM["clients"], *REALM["clientScopes"]],
+        ids=lambda item: item.get("clientId") or item["name"],
+    )
+    def test_a_description_fits_the_column_it_is_stored_in(self, described):
+        """Keycloak's CLIENT.DESCRIPTION is VARCHAR(255), and an over-long one does not
+        truncate — the whole realm import fails and the server will not start."""
+        assert len(described.get("description", "")) <= 255

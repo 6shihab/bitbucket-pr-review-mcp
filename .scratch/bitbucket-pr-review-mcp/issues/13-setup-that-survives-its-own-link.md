@@ -46,3 +46,26 @@ said — that body can carry the authorization code, and the message ends up in 
 visitor to `/connect` is redirected to Keycloak with PKCE `S256`, a `state`, and the right
 `redirect_uri`; and a tool called without a credential now answers with the connect URL
 and the honest note that the page will ask you to sign in.
+
+---
+
+**Driving it from Claude Desktop, added the same day.** A Claude Desktop *custom
+connector* is reached from Anthropic's cloud, so `localhost` is unreachable no matter what
+is configured. The local loop goes through `mcp-remote`, a stdio bridge that runs on the
+person's own machine, does the OAuth flow there, and speaks HTTP to this server.
+
+That needs a third Keycloak client, `bitbucket-pr-review-cli`, and it is **public** rather
+than confidential on purpose: a client secret sitting in a config file on a laptop is not
+a secret, and PKCE is what actually protects a loopback flow. Keycloak's registration
+endpoint refuses anonymous callers, so the client is declared in the realm and named with
+`--static-oauth-client-info`.
+
+Verified by running the bridge: it discovers the authorization server from this server's
+protected-resource metadata, asks for `bitbucket:review`, sends `resource=` (RFC 8707,
+which Keycloak ignores and the audience mapper covers), and uses PKCE `S256`. It stops at
+the Keycloak login page, which is a person's job.
+
+One fact worth keeping: **mcp-remote's callback is `http://127.0.0.1:<port>/oauth/callback`
+— the IP literal, not `localhost`, and `/oauth/callback`, not `/callback`.** Registering
+only the `localhost` spelling, or only Claude Code's path, produces an
+`invalid_redirect_uri` at the very last step.
