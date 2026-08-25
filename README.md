@@ -283,6 +283,38 @@ A few things worth knowing:
 - **`docker-compose.shared.yaml` is development configuration.** Its Keycloak has an
   in-memory database and passwords written down in the file.
 
+### Who is connected, and taking somebody off
+
+```
+uv run bb-pr-mcp --who
+uv run bb-pr-mcp --revoke alice@streamstech.com
+```
+
+`--who` lists everybody who has connected a Bitbucket account: the opaque id, the
+Atlassian email, when they connected, and when their token expires. It decrypts the vault
+to answer, and then prints everything except the one field worth decrypting for.
+
+`--revoke` deletes one person's stored credential. It takes an email or enough of the
+opaque id to be unambiguous, and refuses rather than guessing when a name matches two
+people. **Revoking takes effect on the next tool call**, including on a server that is
+already running — the shared server reads the credential through rather than holding it,
+precisely so that an operator in another terminal is not waiting for a restart.
+
+What it does *not* do is the part worth reading. Three places hold something after
+somebody leaves, and this command owns one of them:
+
+- **Here.** The stored credential is gone.
+- **Keycloak.** They can still sign in and connect a new token. Disable their account
+  there to stop that.
+- **Atlassian.** Their API token still exists and still works everywhere else. Only they,
+  or an Atlassian admin, can revoke it.
+
+The command says all three every time, because an offboarding checklist that gets ticked
+after step one is worse than no checklist.
+
+Neither is a tool, and that is deliberate: a pull request description must not be able to
+talk a Caller into disconnecting a colleague.
+
 ## The tools
 
 | Tool | What it does |

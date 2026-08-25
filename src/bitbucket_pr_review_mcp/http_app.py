@@ -97,7 +97,9 @@ def build_http_app(
     """The whole shared server as one ASGI application."""
 
     def make(person: str) -> Session:
-        return Session.around(CredentialGate(vault.for_person(person), setup))
+        # `hold=False`: an operator revoking somebody runs another process, and a
+        # held credential would keep working until this one restarted.
+        return Session.around(CredentialGate(vault.for_person(person), setup, hold=False))
 
     sessions = PerPerson(make)
     mcp = build_server(settings, allowlist, sessions, http_factory)

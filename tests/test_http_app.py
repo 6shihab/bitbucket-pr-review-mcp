@@ -642,3 +642,62 @@ class TestTheAttributionFooter:
         await self.comment_as(caller, signing, ALICE)
 
         assert bitbucket.asked_who_they_are() == ["alice@streamstech.com"]
+
+
+class TestRevokedFromAnotherProcess:
+    """`--revoke` runs in a different process from the server. Nothing can call
+    `sessions.forget` across that boundary, so the credential is read through instead —
+    and "revoked" has to mean "revoked now", not "revoked at the next restart"."""
+
+    async def test_the_next_tool_call_stops_working(self, caller, signing, vault, wire):
+        person = person_from(ALICE, signing)
+        connected(vault, person, "alice@streamstech.com")
+        wire.will_return(httpx.Response(200, json=fixtures.pull_request()))
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+        assert len(wire.requests) == 1
+
+        # Exactly what `--revoke` does, and nothing else: one row, gone.
+        vault.clear(person)
+
+        response = await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        assert len(wire.requests) == 1, "a revoked credential must not still be in use"
+        assert "connect" in json.dumps(payload(response)).lower()
+
+    async def test_a_credential_replaced_out_of_band_is_picked_up(
+        self, caller, signing, vault, wire
+    ):
+        person = person_from(ALICE, signing)
+        connected(vault, person, "alice@streamstech.com")
+        wire.will_return(*[httpx.Response(200, json=fixtures.pull_request())] * 2)
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        connected(vault, person, "alice.new@streamstech.com")
+
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        assert _basic_auth(wire.last).startswith("alice.new@streamstech.com:")

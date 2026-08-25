@@ -69,11 +69,14 @@ class CredentialGate:
         store: CredentialStore,
         setup: Setup,
         today: Callable[[], date] = date.today,
+        hold: bool = True,
     ) -> None:
         self._store = store
         self._setup = setup
         self._today = today
+        self._hold = hold
         self._rejected = False
+        self._seen = False
         self._held: StoredCredential | None = None
         self._on_new_credential: list[Callable[[], None]] = []
 
@@ -97,16 +100,36 @@ class CredentialGate:
         self._on_new_credential.append(forget)
 
     def stored(self) -> StoredCredential | None:
-        """What is in the keychain, expired or not. Raises if the keychain is unreachable.
+        """What is in the store, expired or not. Raises if the store is unreachable.
 
-        Read once and then held: on macOS every keychain read is a potential prompt, and
-        a tool call that asks the Reviewer to authorise something is exactly the habit
-        this server should not be building. Only a successful read is cached, so the
-        no-credential-yet loop keeps looking.
+        On a device, read once and then held: every keychain read on macOS is a potential
+        prompt, and a tool call that asks the Reviewer to authorise something is exactly
+        the habit this server should not be building. Only a successful read is cached, so
+        the no-credential-yet loop keeps looking.
+
+        On a shared server, `hold=False`, and the reason is offboarding. The store is a
+        local database with no prompt to avoid, and an operator who revokes somebody runs
+        a *different process* — so a held credential would go on working until the server
+        was restarted, which is the one thing revocation must not do. Reading through
+        costs a row lookup and makes "revoked" mean "revoked now".
         """
-        if self._held is None:
-            self._held = self._store.load()
-        return self._held
+        if self._hold:
+            if self._held is None:
+                self._held = self._store.load()
+            return self._held
+
+        fresh = self._store.load()
+        if self._seen and _differs(self._held, fresh):
+            # Replaced or removed by something outside this process. Anything cached
+            # against the old credential — chiefly "which account are we?" — is wrong now.
+            self._rejected = False
+            for forget in self._on_new_credential:
+                forget()
+
+        # "Never read" and "read, and there was nothing" are different, and conflating
+        # them makes the first read of every session look like a change.
+        self._seen, self._held = True, fresh
+        return fresh
 
     def accept_saved(self, stored: StoredCredential) -> None:
         """Called by the listener when the Reviewer completes setup."""
@@ -174,3 +197,15 @@ class CredentialGate:
         in five minutes says something different from a page behind a company login."""
         note = getattr(self._setup, "note", LOOPBACK_NOTE)
         return SetupRequired(self.open_setup(), because, note)
+
+
+def _differs(held: StoredCredential | None, fresh: StoredCredential | None) -> bool:
+    """Whether what is stored is no longer what this gate last saw.
+
+    Compared on the account and the expiry rather than the token: those are what change
+    when somebody disconnects, reconnects, or renews, and it keeps the token out of a
+    comparison that has no business handling it.
+    """
+    if held is None or fresh is None:
+        return held is not fresh
+    return (held.email, held.expires_on) != (fresh.email, fresh.expires_on)

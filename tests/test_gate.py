@@ -131,3 +131,113 @@ class TestTheExpiryWarning:
 
     def test_nothing_to_warn_about_when_there_is_no_credential(self, gate):
         assert gate.expiry_warning() is None
+
+
+class TestReadingThroughOnASharedServer:
+    """`hold=False`. The per-device gate holds the credential because every keychain read
+    on macOS is a potential prompt; a database row is neither, and holding it would mean
+    an operator's revocation took effect at the next restart."""
+
+    def test_it_notices_a_credential_that_has_been_removed(self, keychain, setup_listener):
+        from datetime import date
+
+        from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
+
+        keychain.save(
+            StoredCredential(
+                credential=Credential(email="alice@streamstech.com", token="hers"),
+                expires_on=date(2099, 1, 1),
+            )
+        )
+        gate = CredentialGate(keychain, setup_listener, hold=False)
+        assert gate.current().email == "alice@streamstech.com"
+
+        keychain.clear()
+
+        from bitbucket_pr_review_mcp.credentials import CredentialError
+
+        with pytest.raises(CredentialError):
+            gate.current()
+
+    def test_it_notices_a_credential_that_has_been_replaced(self, keychain, setup_listener):
+        from datetime import date
+
+        from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
+
+        def store(email: str) -> None:
+            keychain.save(
+                StoredCredential(
+                    credential=Credential(email=email, token="t"),
+                    expires_on=date(2099, 1, 1),
+                )
+            )
+
+        store("alice@streamstech.com")
+        gate = CredentialGate(keychain, setup_listener, hold=False)
+        gate.current()
+
+        store("alice.new@streamstech.com")
+
+        assert gate.current().email == "alice.new@streamstech.com"
+
+    def test_replacing_it_forgets_what_was_cached_against_the_old_one(
+        self, keychain, setup_listener
+    ):
+        """Chiefly "which Bitbucket account are we?" — wrong now, and wrong in the
+        direction that edits somebody else's comment."""
+        from datetime import date
+
+        from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
+
+        forgotten: list[str] = []
+
+        def store(email: str) -> None:
+            keychain.save(
+                StoredCredential(
+                    credential=Credential(email=email, token="t"),
+                    expires_on=date(2099, 1, 1),
+                )
+            )
+
+        store("alice@streamstech.com")
+        gate = CredentialGate(keychain, setup_listener, hold=False)
+        gate.when_credential_changes(lambda: forgotten.append("yes"))
+        gate.current()
+
+        store("alice.new@streamstech.com")
+        gate.current()
+
+        assert forgotten == ["yes"]
+
+    def test_reading_the_same_credential_twice_forgets_nothing(
+        self, keychain, setup_listener, credential
+    ):
+        from datetime import date
+
+        from bitbucket_pr_review_mcp.credentials import StoredCredential
+
+        keychain.save(StoredCredential(credential=credential, expires_on=date(2099, 1, 1)))
+        gate = CredentialGate(keychain, setup_listener, hold=False)
+        forgotten: list[str] = []
+        gate.when_credential_changes(lambda: forgotten.append("yes"))
+
+        gate.current()
+        gate.current()
+        gate.current()
+
+        assert forgotten == []
+
+    def test_the_per_device_gate_still_holds(self, keychain, setup_listener, credential):
+        """Unchanged, and deliberately: a keychain read can prompt, and a tool call that
+        asks the Reviewer to authorise something is a habit worth not building."""
+        from datetime import date
+
+        from bitbucket_pr_review_mcp.credentials import StoredCredential
+
+        keychain.save(StoredCredential(credential=credential, expires_on=date(2099, 1, 1)))
+        gate = CredentialGate(keychain, setup_listener)
+        gate.current()
+
+        keychain.clear()
+
+        assert gate.current().email == credential.email

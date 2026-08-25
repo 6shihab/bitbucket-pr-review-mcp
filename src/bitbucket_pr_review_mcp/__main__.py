@@ -18,6 +18,7 @@ import asyncio
 import sys
 import time
 from collections.abc import Callable
+from datetime import date
 
 import httpx
 from loguru import logger
@@ -110,9 +111,25 @@ def main() -> None:
     )
     parser.add_argument("--host", default="127.0.0.1", help="Address to bind with --http.")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind with --http.")
+    parser.add_argument(
+        "--who",
+        action="store_true",
+        help="List who has connected Bitbucket to the shared server, then exit.",
+    )
+    parser.add_argument(
+        "--revoke",
+        metavar="EMAIL_OR_ID",
+        help="Delete one person's stored Bitbucket credential from the shared server.",
+    )
     args = parser.parse_args()
 
     settings, allowlist = _load()
+
+    if args.who:
+        raise SystemExit(_run_who(settings))
+
+    if args.revoke:
+        raise SystemExit(_run_revoke(settings, args.revoke))
 
     if args.http:
         raise SystemExit(_run_http(settings, allowlist, args.host, args.port))
@@ -272,6 +289,122 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     finally:
         vault.close()
     return 0
+
+
+def _open_vault(settings: Settings):
+    """The shared server's credential store, or a message saying why not."""
+    from .vault import CredentialVault, VaultKey
+
+    try:
+        key = VaultKey.required()
+    except CredentialError as exc:
+        logger.error("{}", exc)
+        return None
+    return CredentialVault.at(settings.vault_file, key)
+
+
+def _run_who(settings: Settings) -> int:
+    """Who has connected Bitbucket, and when their token runs out. No tokens.
+
+    An operator needs this to offboard somebody and to see an expiry before it becomes a
+    401 in the middle of a review. It reads the vault, which means it decrypts — and then
+    prints everything except the one field worth decrypting for.
+    """
+    vault = _open_vault(settings)
+    if vault is None:
+        return 2
+
+    try:
+        enrolled = vault.enrolled()
+    finally:
+        vault.close()
+
+    if not enrolled:
+        logger.info("Nobody has connected a Bitbucket account to this server.")
+        return 0
+
+    logger.info(
+        "{} {} connected Bitbucket:",
+        len(enrolled),
+        "person has" if len(enrolled) == 1 else "people have",
+    )
+    today = date.today()
+    for person in enrolled:
+        if not person.readable:
+            logger.warning(
+                "  {}  UNREADABLE — this row will not decrypt with the current key",
+                person.person[:12],
+            )
+            continue
+        days = (person.expires_on - today).days
+        note = "expired" if days < 0 else f"{days} days left"
+        logger.info(
+            "  {}  {}  connected {}  token expires {} ({})",
+            person.person[:12],
+            person.email,
+            person.connected_at.strftime("%Y-%m-%d"),
+            person.expires_on.isoformat(),
+            note,
+        )
+    return 0
+
+
+def _run_revoke(settings: Settings, wanted: str) -> int:
+    """Delete one person's stored credential, and say plainly what is still true.
+
+    Three different places hold something after somebody leaves, and this command owns
+    exactly one of them. Pretending otherwise is how an offboarding checklist gets ticked
+    while the person still has access.
+    """
+    vault = _open_vault(settings)
+    if vault is None:
+        return 2
+
+    try:
+        matches = _matching(vault.enrolled(), wanted)
+        if not matches:
+            logger.error(
+                "Nobody here matches {!r}. Run --who to see who has connected.", wanted
+            )
+            return 1
+        if len(matches) > 1:
+            logger.error("{!r} matches {} people:", wanted, len(matches))
+            for person in matches:
+                logger.error("  {}  {}", person.person[:12], person.email or "unreadable")
+            logger.error("Name one of them exactly.")
+            return 2
+
+        person = matches[0]
+        vault.clear(person.person)
+    finally:
+        vault.close()
+
+    logger.info(
+        "Removed the stored Bitbucket credential for {}.", person.email or person.person[:12]
+    )
+    logger.warning(
+        "That is all this command can do. Two things are still true:\n"
+        "  * They can still sign in here, and connect a new token. Disable their "
+        "account in Keycloak to stop that.\n"
+        "  * Their Atlassian API token still exists and still works everywhere else. "
+        f"Only they, or an Atlassian admin, can revoke it at {TOKEN_PAGE}."
+    )
+    return 0
+
+
+def _matching(enrolled, wanted: str) -> list:
+    """Find somebody by email, or by enough of the opaque id to be unambiguous."""
+    needle = wanted.strip().lower()
+    exact = [person for person in enrolled if person.person == needle]
+    if exact:
+        return exact
+
+    return [
+        person
+        for person in enrolled
+        if (person.email or "").lower() == needle
+        or (len(needle) >= 8 and person.person.startswith(needle))
+    ]
 
 
 def _connect_pages(settings, allowlist, vault, resource, connect_url):
