@@ -215,8 +215,18 @@ class CredentialVault:
     def at(cls, path: Path | str, key: VaultKey) -> CredentialVault:
         """Open the store, creating it owner-only if it is not there yet."""
         location = Path(path)
-        location.parent.mkdir(parents=True, exist_ok=True)
-        _create_owner_only(location)
+        try:
+            location.parent.mkdir(parents=True, exist_ok=True)
+            _create_owner_only(location)
+        except PermissionError as exc:
+            raise VaultError(
+                f"Cannot create the credential store at {location}. That directory has "
+                f"to be writable by {_running_as()}, which is what this server runs as.\n"
+                "In a container this is usually a bind mount: the image gives the store "
+                "directory to that user, and Docker seeds a *named volume* from the "
+                "image — but a bind mount keeps the host directory's ownership instead. "
+                "Give the host directory to that user, or use a named volume."
+            ) from exc
 
         connection = sqlite3.connect(location, check_same_thread=False)
         connection.execute("PRAGMA foreign_keys = ON")

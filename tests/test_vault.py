@@ -22,6 +22,7 @@ from bitbucket_pr_review_mcp.vault import (
     KEY_ENV,
     KEY_FILE_ENV,
     CredentialVault,
+    VaultError,
     VaultKey,
     VaultKeyMissing,
     VaultUnreadable,
@@ -159,6 +160,30 @@ class TestTheKey:
         message = str(caught.value)
         assert "Permission denied" in message
         assert "readable by" in message, "say who has to be able to read it"
+
+    def test_an_unwritable_store_directory_says_who_could_not_write_it(
+        self, monkeypatch, tmp_path, key
+    ):
+        """The third way this deployment refuses to start, and the last one with a
+        traceback instead of a sentence.
+
+        The image chowns `/vault` to the user this runs as, which is enough for a named
+        volume — Docker seeds one from the image. A bind mount keeps the host directory's
+        ownership instead, so the same compose file works one way and not the other, and
+        the difference surfaces as an unhandled PermissionError from `os.open`.
+        """
+
+        def refuse(*args, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(os, "open", refuse)
+
+        with pytest.raises(VaultError) as caught:
+            CredentialVault.at(tmp_path / "credentials.sqlite3", key)
+
+        message = str(caught.value)
+        assert "writable by" in message, "say who has to be able to write there"
+        assert "bind" in message.lower(), "and why it usually is not"
 
     def test_the_key_does_not_print_itself(self, key):
         assert key.exported() not in repr(key)

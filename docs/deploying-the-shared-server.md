@@ -71,6 +71,28 @@ start, and it is the wrong fix: a key every account on the host can read is most
 way to no key at all. The uid is `reviewer` in the image — `docker run --rm --entrypoint
 sh bitbucket-pr-review-mcp:local -c id` says which, if it ever changes.
 
+### The same applies to the store, if it is a bind mount
+
+The image gives `/vault` to that same user, which is enough for a **named volume**:
+Docker seeds a new one from the image, ownership included. A **bind mount** does not work
+that way — the host directory's ownership is what the container sees, and a directory
+Docker created is owned by root. The server then cannot create its own store:
+
+```
+PermissionError: [Errno 13] Permission denied: '/vault/credentials.sqlite3'
+```
+
+If the compose file binds a host directory for the vault, give it to the same user:
+
+```
+sudo chown -R 10001:10001 /path/to/vault-directory
+```
+
+Named volumes avoid this entirely, which is why the compose file used them originally.
+Bind mounts are worth the extra step when you want the store where your backups already
+look — which is a real reason, as long as the key is somewhere those backups do not
+reach.
+
 **Absolute, and not a relative path**, because a relative bind source is resolved against
 the project directory: `./.bb-pr-mcp/vault.key` means one file on a laptop and a different
 one on a server, and `~/...` is expanded by some Docker versions and not others.
