@@ -15,10 +15,8 @@ import json
 from datetime import UTC, datetime, timedelta
 
 import httpx
-import jwt
 import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 
 from bitbucket_pr_review_mcp.discovery import REVIEW_SCOPE, ProtectedResource
 from bitbucket_pr_review_mcp.tokens import (
@@ -29,73 +27,28 @@ from bitbucket_pr_review_mcp.tokens import (
     TokenVerifier,
 )
 
-PUBLIC = "https://review.streamstech.com/mcp"
-ISSUER = "https://keycloak.streamstech.com/realms/streamstech"
-JWKS_URI = "https://keycloak.streamstech.com/realms/streamstech/protocol/openid-connect/certs"
-SUBJECT = "f:9c1e:alice"
+from .oauth import (
+    ISSUER,
+    KID,
+    ROTATED,
+    SUBJECT,
+    Keycloak,
+    new_key,
+    public_jwk,
+    token_for,
+)
 
-KID = "the-current-key"
-ROTATED = "the-next-key"
+PUBLIC = "https://review.streamstech.com/mcp"
 
 
 @pytest.fixture(scope="module")
 def signing():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    return new_key()
 
 
 @pytest.fixture(scope="module")
 def rotated():
-    return rsa.generate_private_key(public_exponent=65537, key_size=2048)
-
-
-def public_jwk(private, kid: str) -> dict:
-    entry = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private.public_key()))
-    return {**entry, "kid": kid, "alg": "RS256", "use": "sig"}
-
-
-def token_for(private, kid: str = KID, **overrides) -> str:
-    claims = {
-        "iss": ISSUER,
-        "sub": SUBJECT,
-        "aud": PUBLIC,
-        "exp": datetime.now(UTC) + timedelta(minutes=5),
-        "iat": datetime.now(UTC),
-        "scope": f"openid {REVIEW_SCOPE}",
-    }
-    claims.update(overrides)
-    # A claim set to None is *dropped*, not sent as null: the interesting token is the
-    # one a realm without an audience mapper actually mints, which has no `aud` key.
-    claims = {name: value for name, value in claims.items() if value is not None}
-    return jwt.encode(claims, private, algorithm="RS256", headers={"kid": kid})
-
-
-class Keycloak:
-    """The authorization server's two public endpoints, and a count of the asking."""
-
-    def __init__(self, keys: list[dict]) -> None:
-        self.keys = keys
-        self.metadata_hits = 0
-        self.jwks_hits = 0
-        self.openid_configuration_missing = False
-        self.declared_issuer = ISSUER
-
-    def handle(self, request: httpx.Request) -> httpx.Response:
-        path = request.url.path
-        if path.endswith("/.well-known/openid-configuration"):
-            if self.openid_configuration_missing:
-                return httpx.Response(404)
-            self.metadata_hits += 1
-            return httpx.Response(200, json={"issuer": self.declared_issuer, "jwks_uri": JWKS_URI})
-        if path.startswith("/.well-known/oauth-authorization-server"):
-            self.metadata_hits += 1
-            return httpx.Response(200, json={"issuer": self.declared_issuer, "jwks_uri": JWKS_URI})
-        if request.url == JWKS_URI:
-            self.jwks_hits += 1
-            return httpx.Response(200, json={"keys": self.keys})
-        return httpx.Response(404)
-
-    def client(self) -> httpx.AsyncClient:
-        return httpx.AsyncClient(transport=httpx.MockTransport(self.handle))
+    return new_key()
 
 
 @pytest.fixture

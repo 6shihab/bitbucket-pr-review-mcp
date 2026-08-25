@@ -103,9 +103,19 @@ def main() -> None:
         action="store_true",
         help="Remove the stored credential from this device's keychain, then exit.",
     )
+    parser.add_argument(
+        "--http",
+        action="store_true",
+        help="Serve the shared deployment over HTTP instead of stdio (several people).",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="Address to bind with --http.")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind with --http.")
     args = parser.parse_args()
 
     settings, allowlist = _load()
+
+    if args.http:
+        raise SystemExit(_run_http(settings, allowlist, args.host, args.port))
     gate = _build_gate(settings, allowlist)
 
     if args.forget:
@@ -215,6 +225,66 @@ async def _run_check(
 
     logger.info("Authenticated as {} ({}).", identity.display_name, credential.email)
     return 0
+
+
+def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) -> int:
+    """The shared deployment: several people, one server, a token per request.
+
+    Nothing here degrades into something weaker. A missing vault key, an undescribable
+    public URL or an absent issuer all stop the process, because each of them is the
+    difference between holding other people's credentials safely and appearing to.
+    """
+    import uvicorn
+
+    from .discovery import DiscoveryError, ProtectedResource
+    from .http_app import build_http_app
+    from .tokens import SigningKeys, TokenVerifier
+    from .vault import CredentialVault, VaultKey
+
+    try:
+        key = VaultKey.required()
+        resource = ProtectedResource.of(settings.public_url, settings.oidc_issuer)
+    except (CredentialError, DiscoveryError) as exc:
+        logger.error("Cannot start the shared server: {}", exc)
+        return 2
+
+    vault = CredentialVault.at(settings.vault_file, key)
+    verifier = TokenVerifier(
+        resource=resource,
+        keys=SigningKeys(
+            resource.authorization_servers[0],
+            build_http_client(settings.request_timeout_seconds),
+        ),
+    )
+
+    logger.info("Serving {} as {}.", resource.resource, "MCP over HTTP")
+    logger.info("Tokens are accepted from {}.", resource.authorization_servers[0])
+    logger.info(
+        "{} person(s) have connected Bitbucket so far.", len(vault.enrolled())
+    )
+
+    app = build_http_app(
+        settings, allowlist, vault, verifier, resource, _SharedSetupNotBuiltYet()
+    )
+    try:
+        uvicorn.run(app, host=host, port=port, log_config=None)
+    finally:
+        vault.close()
+    return 0
+
+
+class _SharedSetupNotBuiltYet:
+    """Stands in for ticket 13. Says so rather than failing in an interesting way."""
+
+    def start(self, on_saved) -> str:
+        raise CredentialError(
+            "You are authenticated, but this server has no Bitbucket credential for you "
+            "yet, and the page that collects one is not built (ticket 13). Until it is, "
+            "a credential can be put in the vault out of band."
+        )
+
+    def stop(self) -> None:
+        return None
 
 
 def _run_forget(gate: CredentialGate) -> int:

@@ -35,6 +35,7 @@ from .references import InvalidReference, PullRequestRef, Repository
 from .repositories import fetch_repository
 from .review import BatchRefused, post_review
 from .search import UnsafeQuery, search_code
+from .sessions import Sessions, SoleCaller
 from .settings import Allowlist, Settings
 from .source import UnreadablePath, fetch_directory, fetch_file
 from .summary import MalformedSummary, NotOurComment, publish_summary
@@ -341,15 +342,27 @@ PullRequestArg = Annotated[
 def build_server(
     settings: Settings,
     allowlist: Allowlist,
-    gate: CredentialGate,
+    gate: CredentialGate | Sessions,
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> FastMCP:
     """Wire the tools over a guarded Bitbucket client.
+
+    `gate` is either one credential gate — the per-device install, one caller forever —
+    or a `Sessions` that resolves per person on a shared server. The tools cannot tell
+    the difference, which is the point: nothing below this line knows how many people
+    there are, and nothing above it decides whose credential to use from tool input.
 
     `http_factory` is the project's one invented test seam: tests pass a mock transport
     and everything above the wire stays production code.
     """
     make_http = http_factory or (lambda: build_http_client(settings.request_timeout_seconds))
+    sessions: Sessions = SoleCaller.of(gate) if isinstance(gate, CredentialGate) else gate
+
+    def credentials() -> CredentialGate:
+        return sessions.current().gate
+
+    def identity() -> KnownIdentity:
+        return sessions.current().whoami
 
     def open_client(credential: Credential) -> BitbucketClient:
         return BitbucketClient(http=make_http(), allowlist=allowlist, credential=credential)
@@ -361,7 +374,7 @@ def build_server(
         point — the credential is not reachable any other way.
         """
         try:
-            credential = gate.current()
+            credential = credentials().current()
         except CredentialError as exc:  # SetupRequired names the page that fixes it
             raise ToolError(str(exc)) from exc
 
@@ -369,8 +382,9 @@ def build_server(
         try:
             return await work(client)
         except Unauthorized as exc:
-            gate.report_unauthorized()
-            raise ToolError(_after_rejection(gate, exc)) from exc
+            here = credentials()
+            here.report_unauthorized()
+            raise ToolError(_after_rejection(here, exc)) from exc
         except (Forbidden, BitbucketError) as exc:
             raise ToolError(str(exc)) from exc
         except ASKED_FOR_THE_IMPOSSIBLE as exc:
@@ -389,8 +403,6 @@ def build_server(
         version=__version__,
     )
     diffs = DiffCache()
-    whoami = KnownIdentity()
-    gate.when_credential_changes(whoami.forget)
 
     @mcp.tool(
         annotations=ToolAnnotations(readOnlyHint=True, openWorldHint=True),
@@ -478,7 +490,7 @@ def build_server(
         async def work(client: BitbucketClient):
             findings = [item.to_finding() for item in comments]
             reviewer = await _reviewer(client)
-            ours = await whoami.account_id(client)
+            ours = await identity().account_id(client)
             return await post_review(
                 client,
                 ref,
@@ -521,7 +533,7 @@ def build_server(
 
         async def work(client: BitbucketClient):
             reviewer = await _reviewer(client)
-            ours = await whoami.account_id(client)
+            ours = await identity().account_id(client)
             return await publish_summary(
                 client,
                 ref,
@@ -546,10 +558,10 @@ def build_server(
     async def _reviewer(client: BitbucketClient) -> Reviewer:
         """Whose name goes on the comment. Unknown display name is not a blocker: the
         credential's email always identifies the account that will be held to it."""
-        identity = await whoami.of(client)
+        known = await identity().of(client)
         return Reviewer(
-            display_name=identity.display_name if identity else "",
-            email=gate.current().email,
+            display_name=known.display_name if known else "",
+            email=credentials().current().email,
         )
 
     @mcp.tool(
@@ -565,7 +577,7 @@ def build_server(
         ref = _reference(pull_request)
 
         async def work(client: BitbucketClient):
-            ours = await whoami.account_id(client)
+            ours = await identity().account_id(client)
             return await fetch_comments(client, ref, ours, settings.max_comments)
 
         conversation = await with_bitbucket(work)

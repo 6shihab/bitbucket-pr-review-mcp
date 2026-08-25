@@ -137,3 +137,4 @@ class Settings(BaseSettings):
     # to build rather than serving a document that describes nothing.
     public_url: str = ""
     oidc_issuer: str = ""
+    vault_file: Path = Path("config/credentials.sqlite3")

@@ -268,6 +268,7 @@ install described above needs neither, because stdio has exactly one caller:
 |---|---|
 | `BB_MCP_PUBLIC_URL` | The address Claude connects to, exactly as it is typed into the connector. It is what tokens must name as their audience |
 | `BB_MCP_OIDC_ISSUER` | The Keycloak realm that issues those tokens. It must match the issuer in the realm's discovery document exactly — a trailing slash is a difference |
+| `BB_MCP_VAULT_FILE` | Where the per-person credentials are kept. Encrypted under `BB_MCP_VAULT_KEY`, which is not a setting because it must not live in a `.env` beside the data |
 
 Every ceiling is stated in the response when it bites. Truncation is never silent: a
 Caller that cannot tell a truncated diff from a complete one will review the missing half
