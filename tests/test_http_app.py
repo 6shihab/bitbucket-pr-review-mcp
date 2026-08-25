@@ -13,6 +13,7 @@ from datetime import date
 import httpx
 import pytest
 from asgi_lifespan import LifespanManager
+from starlette.applications import Starlette
 
 from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
 from bitbucket_pr_review_mcp.discovery import REVIEW_SCOPE, ProtectedResource
@@ -57,8 +58,28 @@ def vault(tmp_path):
     store.close()
 
 
+class Connected:
+    """Stands in for the connect page, and captures the callback it is handed.
+
+    That callback is the whole point of ticket 14: the page writes to the vault, and
+    unless it can say so, every session that already read a credential goes on using it.
+    """
+
+    def __init__(self) -> None:
+        self.forget = None
+
+    def factory(self, forget):
+        self.forget = forget
+        return Starlette(routes=[])
+
+
 @pytest.fixture
-def app(keycloak, resource, vault, allowlist, setup_listener, wire):
+def connect_page() -> Connected:
+    return Connected()
+
+
+@pytest.fixture
+def app(keycloak, resource, vault, allowlist, setup_listener, wire, connect_page):
     verifier = TokenVerifier(resource=resource, keys=SigningKeys(ISSUER, keycloak.client()))
     return build_http_app(
         Settings(),
@@ -67,6 +88,7 @@ def app(keycloak, resource, vault, allowlist, setup_listener, wire):
         verifier,
         resource,
         setup_listener,
+        connect_factory=connect_page.factory,
         http_factory=lambda: httpx.AsyncClient(
             transport=wire.transport(), base_url="https://api.bitbucket.org"
         ),
@@ -332,3 +354,291 @@ def _basic_auth(request: httpx.Request) -> str:
 
     encoded = request.headers["authorization"].removeprefix("Basic ")
     return base64.b64decode(encoded).decode()
+
+
+class TestWhenSomebodyChangesTheirCredential:
+    """The connect page writes straight to the vault. A session that has already read a
+    credential must be told, or it keeps using one that has been replaced or removed."""
+
+    async def test_disconnecting_stops_the_next_tool_call(
+        self, caller, signing, vault, wire, connect_page
+    ):
+        person = person_from(ALICE, signing)
+        connected(vault, person, "alice@streamstech.com")
+        wire.will_return(httpx.Response(200, json=fixtures.pull_request()))
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+        assert len(wire.requests) == 1
+
+        vault.clear(person)
+        connect_page.forget(person)
+
+        response = await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        assert len(wire.requests) == 1, "the removed credential must not be reused"
+        assert "connect" in json.dumps(payload(response)).lower()
+
+    async def test_reconnecting_a_different_account_changes_who_posts(
+        self, caller, signing, vault, wire, connect_page
+    ):
+        """Otherwise the comment says one name and the account behind it is another —
+        which is the kind of wrong that survives review because it looks fine."""
+        person = person_from(ALICE, signing)
+        connected(vault, person, "alice@streamstech.com")
+        wire.will_return(
+            httpx.Response(200, json=fixtures.pull_request()),
+            httpx.Response(200, json=fixtures.pull_request()),
+        )
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        connected(vault, person, "alice.other@streamstech.com")
+        connect_page.forget(person)
+        await call(
+            caller,
+            token_for(signing, sub=ALICE),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        assert _basic_auth(wire.last).startswith("alice.other@streamstech.com:")
+
+    async def test_forgetting_one_person_leaves_everybody_else_connected(
+        self, caller, signing, vault, wire, connect_page
+    ):
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+        connected(vault, person_from(BOB, signing), "bob@streamstech.com")
+        wire.will_return(*[httpx.Response(200, json=fixtures.pull_request())] * 3)
+        for subject in (ALICE, BOB):
+            await call(
+                caller,
+                token_for(signing, sub=subject),
+                "tools/call",
+                name="bitbucket_get_pull_request",
+                arguments={"pull_request": PR},
+            )
+
+        connect_page.forget(person_from(ALICE, signing))
+
+        await call(
+            caller,
+            token_for(signing, sub=BOB),
+            "tools/call",
+            name="bitbucket_get_pull_request",
+            arguments={"pull_request": PR},
+        )
+
+        assert _basic_auth(wire.last).startswith("bob@streamstech.com:")
+
+
+class TestTwoPeopleAtOnce:
+    async def test_concurrent_calls_use_their_own_credentials(
+        self, caller, signing, vault, wire
+    ):
+        """Not interleaved by luck: both requests are in flight together."""
+        import asyncio
+
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+        connected(vault, person_from(BOB, signing), "bob@streamstech.com")
+        wire.will_return(*[httpx.Response(200, json=fixtures.pull_request())] * 20)
+
+        async def review(subject: str):
+            return await call(
+                caller,
+                token_for(signing, sub=subject),
+                "tools/call",
+                name="bitbucket_get_pull_request",
+                arguments={"pull_request": PR},
+            )
+
+        await asyncio.gather(*[review(who) for who in (ALICE, BOB) for _ in range(5)])
+
+        used = sorted({_basic_auth(request).split(":")[0] for request in wire.requests})
+        assert used == ["alice@streamstech.com", "bob@streamstech.com"]
+        assert len(wire.requests) == 10
+
+    async def test_nobody_is_served_with_an_unauthenticated_session(self, caller, signing):
+        """`PerPerson` refuses rather than guessing, if a tool ever runs unbound."""
+        from bitbucket_pr_review_mcp.sessions import NoCaller, PerPerson
+
+        with pytest.raises(NoCaller):
+            PerPerson(lambda person: None).current()
+
+
+class Bitbucket:
+    """A Bitbucket that routes rather than queues.
+
+    A queue of responses assumes every call makes the same requests in the same order,
+    and the shared diff cache means the second person's review does not re-fetch the
+    diff. Routing also lets the answer depend on *which credential asked*, which is the
+    thing these tests are actually about.
+    """
+
+    def __init__(self) -> None:
+        self.requests: list[httpx.Request] = []
+
+    def handle(self, request: httpx.Request) -> httpx.Response:
+        self.requests.append(request)
+        path, email = request.url.path, _basic_auth(request).split(":")[0]
+
+        if path.endswith("/2.0/user"):
+            return httpx.Response(
+                200,
+                json={
+                    "type": "user",
+                    "display_name": email.split("@")[0].title() + " Example",
+                    "account_id": f"account-of-{email}",
+                    "uuid": "{b4d2e8f1-3c5a-4e7b-9d1f-2a6c8e0b4d7f}",
+                },
+            )
+        if path.endswith("/diff"):
+            return httpx.Response(200, text=fixtures.UNIFIED_DIFF)
+        if path.endswith("/comments"):
+            if request.method == "POST":
+                return httpx.Response(
+                    201, json={"id": 3001, "inline": {"path": "src/app/retry.py", "to": 14}}
+                )
+            return httpx.Response(200, json={"values": []})
+        return httpx.Response(200, json=fixtures.pull_request())
+
+    def posted(self) -> list[httpx.Request]:
+        return [r for r in self.requests if r.method == "POST"]
+
+    def asked_who_they_are(self) -> list[str]:
+        return [
+            _basic_auth(r).split(":")[0]
+            for r in self.requests
+            if r.url.path.endswith("/2.0/user")
+        ]
+
+
+class TestTheAttributionFooter:
+    """Ticket 05 put a name on every comment so somebody is accountable for it. On a
+    shared server that name has to be the person who asked, not whoever this process
+    happened to ask Bitbucket about first."""
+
+    @pytest.fixture
+    def bitbucket(self) -> Bitbucket:
+        return Bitbucket()
+
+    @pytest.fixture
+    def app(self, keycloak, resource, vault, allowlist, setup_listener, bitbucket):
+        verifier = TokenVerifier(
+            resource=resource, keys=SigningKeys(ISSUER, keycloak.client())
+        )
+        return build_http_app(
+            Settings(),
+            allowlist,
+            vault,
+            verifier,
+            resource,
+            setup_listener,
+            http_factory=lambda: httpx.AsyncClient(
+                transport=httpx.MockTransport(bitbucket.handle),
+                base_url="https://api.bitbucket.org",
+            ),
+        )
+
+    @staticmethod
+    async def comment_as(caller, signing, subject: str):
+        return await call(
+            caller,
+            token_for(signing, sub=subject),
+            "tools/call",
+            name="bitbucket_add_pr_comment",
+            arguments={
+                "pull_request": PR,
+                "review_basis": fixtures.BASIS,
+                "comments": [
+                    {
+                        "severity": "HIGH",
+                        "message": "`RETRIES` is undefined on this path.",
+                        "path": "src/app/retry.py",
+                        "line": 14,
+                        "side": "added",
+                    }
+                ],
+            },
+        )
+
+    @staticmethod
+    def posted_body(bitbucket: Bitbucket) -> str:
+        posted = bitbucket.posted()
+        assert posted, "nothing was posted"
+        return json.loads(posted[-1].content)["content"]["raw"]
+
+    async def test_it_names_the_person_whose_credential_posted(
+        self, caller, signing, vault, bitbucket
+    ):
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+
+        await self.comment_as(caller, signing, ALICE)
+
+        body = self.posted_body(bitbucket)
+        assert "Alice Example" in body
+        assert "alice@streamstech.com" in body
+
+    async def test_two_people_are_not_attributed_to_each_other(
+        self, caller, signing, vault, bitbucket
+    ):
+        """The failure this prevents looks fine in review: a comment carrying one
+        person's name, posted with another person's token."""
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+        connected(vault, person_from(BOB, signing), "bob@streamstech.com")
+
+        await self.comment_as(caller, signing, ALICE)
+        alice_said = self.posted_body(bitbucket)
+        alice_used = _basic_auth(bitbucket.posted()[-1]).split(":")[0]
+
+        await self.comment_as(caller, signing, BOB)
+        bob_said = self.posted_body(bitbucket)
+        bob_used = _basic_auth(bitbucket.posted()[-1]).split(":")[0]
+
+        assert "Alice Example" in alice_said and "alice@streamstech.com" in alice_said
+        assert "Bob Example" in bob_said and "bob@streamstech.com" in bob_said
+        assert (alice_used, bob_used) == ("alice@streamstech.com", "bob@streamstech.com")
+        assert "alice" not in bob_said.lower()
+
+    async def test_ours_means_this_persons_and_not_this_servers(
+        self, caller, signing, vault, bitbucket
+    ):
+        """Each person asks Bitbucket who *they* are. One cached answer shared between
+        them is how one person ends up editing another's summary comment."""
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+        connected(vault, person_from(BOB, signing), "bob@streamstech.com")
+
+        await self.comment_as(caller, signing, ALICE)
+        await self.comment_as(caller, signing, BOB)
+
+        assert bitbucket.asked_who_they_are() == [
+            "alice@streamstech.com",
+            "bob@streamstech.com",
+        ]
+
+    async def test_one_person_reviewing_twice_asks_who_they_are_once(
+        self, caller, signing, vault, bitbucket
+    ):
+        """The cache ticket 05 added is still a cache; it is just per person now."""
+        connected(vault, person_from(ALICE, signing), "alice@streamstech.com")
+
+        await self.comment_as(caller, signing, ALICE)
+        await self.comment_as(caller, signing, ALICE)
+
+        assert bitbucket.asked_who_they_are() == ["alice@streamstech.com"]

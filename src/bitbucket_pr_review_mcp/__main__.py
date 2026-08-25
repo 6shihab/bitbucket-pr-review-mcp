@@ -264,7 +264,9 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     logger.info("Tokens are accepted from {}.", resource.authorization_servers[0])
     logger.info("{} person(s) have connected Bitbucket so far.", len(vault.enrolled()))
 
-    app = build_http_app(settings, allowlist, vault, verifier, resource, setup, connect)
+    app = build_http_app(
+        settings, allowlist, vault, verifier, resource, setup, connect_factory=connect
+    )
     try:
         uvicorn.run(app, host=host, port=port, log_config=None)
     finally:
@@ -306,13 +308,19 @@ def _connect_pages(settings, allowlist, vault, resource, connect_url):
         keys=SigningKeys(issuer, build_http_client(settings.request_timeout_seconds)),
         http=build_http_client(settings.request_timeout_seconds),
     )
-    connect = build_connect_app(
-        party=party,
-        vault=vault,
-        verify=verify,
-        secret=cookie_secret(VaultKey.required().material),
-        public_url=resource.resource,
-    )
+    def connect(forget):
+        """`forget` invalidates one person's cached session. The page needs it: it writes
+        straight to the vault, and a session that has already read a credential would go
+        on using one that has just been replaced or disconnected."""
+        return build_connect_app(
+            party=party,
+            vault=vault,
+            verify=verify,
+            secret=cookie_secret(VaultKey.required().material),
+            public_url=resource.resource,
+            on_change=forget,
+        )
+
     logger.info("People connect their Bitbucket account at {}.", connect_url)
     return connect, ConnectHere(connect_url)
 

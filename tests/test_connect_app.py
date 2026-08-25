@@ -66,7 +66,12 @@ def verified() -> Identity:
 
 
 @pytest.fixture
-def app(keycloak, vault, verified) -> Starlette:
+def changes() -> list[str]:
+    return []
+
+
+@pytest.fixture
+def app(keycloak, vault, verified, changes) -> Starlette:
     async def verify(credential: Credential) -> Identity:
         return verified
 
@@ -84,6 +89,7 @@ def app(keycloak, vault, verified) -> Starlette:
         verify=verify,
         secret=SECRET,
         public_url=f"{PUBLIC}/mcp",
+        on_change=changes.append,
         today=lambda: date(2026, 8, 25),
         now=time.time,
     )
@@ -330,3 +336,36 @@ class TestWhatACallerIsTold:
 
         assert "five minutes" not in note
         assert "sign in" in note
+
+
+class TestTellingTheSessionsAboutIt:
+    """The page writes straight to the vault. Every session that has already read a
+    credential is holding one that may no longer be the truth, and only this says so."""
+
+    async def test_connecting_says_so(self, browser, changes):
+        cookies = signed_in_as()
+        await browser.post(
+            "/verify",
+            data=form(email="alice@streamstech.com", api_token="hers", expires_on="2027-01-01"),
+            cookies=cookies,
+        )
+        await browser.post("/save", data=form(), cookies=cookies)
+
+        assert changes == [person_id(ISSUER, "alice-sub")]
+
+    async def test_disconnecting_says_so(self, browser, changes):
+        await browser.post("/forget", data=form(), cookies=signed_in_as())
+
+        assert changes == [person_id(ISSUER, "alice-sub")]
+
+    async def test_it_names_only_the_person_who_changed(self, browser, changes):
+        await browser.post("/forget", data=form(), cookies=signed_in_as("bob-sub", "Bob"))
+
+        assert changes == [person_id(ISSUER, "bob-sub")]
+
+    async def test_a_refused_request_changes_nothing(self, browser, changes):
+        await browser.post(
+            "/forget", data=form(), cookies=signed_in_as(), headers={"origin": "https://evil.example"}
+        )
+
+        assert changes == []

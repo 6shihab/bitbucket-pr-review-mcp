@@ -102,6 +102,7 @@ def build_connect_app(
     verify: Callable,
     secret: bytes,
     public_url: str,
+    on_change: Callable[[str], None] | None = None,
     today: Callable[[], date] = date.today,
     now: Callable[[], float] = time.time,
 ) -> Starlette:
@@ -109,6 +110,15 @@ def build_connect_app(
     origin = _origin(public_url)
     secure = origin.startswith("https://")
     pending: dict[str, Pending] = {}
+
+    def changed(person: str) -> None:
+        """Say that this person's stored credential is not what it was.
+
+        Without this, a session that has already read one keeps using it: a disconnected
+        account goes on posting, and a replaced one posts under the account it replaced.
+        """
+        if on_change is not None:
+            on_change(person)
 
     def who(request: Request) -> LoggedIn | None:
         payload = _unseal(request.cookies.get(SESSION_COOKIE), secret, SESSION_SECONDS, now)
@@ -239,6 +249,7 @@ def build_connect_app(
             )
 
         vault.save(signed_in.person, waiting.candidate)
+        changed(signed_in.person)
         logger.info("{} connected {}.", signed_in.name, waiting.candidate.email)
         return HTMLResponse(_done_page(signed_in, waiting.candidate, waiting.identity))
 
@@ -252,6 +263,7 @@ def build_connect_app(
 
         pending.pop(signed_in.person, None)
         vault.clear(signed_in.person)
+        changed(signed_in.person)
         logger.info("{} disconnected their Bitbucket account.", signed_in.name)
         return HTMLResponse(_forgotten_page(signed_in))
 

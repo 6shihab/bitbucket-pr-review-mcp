@@ -39,6 +39,11 @@ from .vault import CredentialVault
 MCP_PATH = "/mcp"
 CONNECT_PATH = "/connect"
 
+# Given a way to forget one person's cached session, build the pages that connect and
+# disconnect Bitbucket accounts. Inverted so that the pages can invalidate what the
+# transport caches without either one importing the other.
+ConnectFactory = Callable[[Callable[[str], None]], Starlette]
+
 
 class RequireToken:
     """Every request past this point belongs to somebody, or it does not pass.
@@ -86,7 +91,7 @@ def build_http_app(
     verifier: TokenVerifier,
     resource: ProtectedResource,
     setup: Setup,
-    connect: Starlette | None = None,
+    connect_factory: ConnectFactory | None = None,
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> Starlette:
     """The whole shared server as one ASGI application."""
@@ -96,6 +101,12 @@ def build_http_app(
 
     sessions = PerPerson(make)
     mcp = build_server(settings, allowlist, sessions, http_factory)
+
+    # The connect page writes straight to the vault, and a session that has already read
+    # a credential would go on using one that has been replaced or removed — posting
+    # comments under an account its owner has disconnected. It is handed the one thing it
+    # needs to prevent that: the ability to say "forget this person".
+    connect = None if connect_factory is None else connect_factory(sessions.forget)
 
     async def metadata(request: Request) -> JSONResponse:
         return JSONResponse(

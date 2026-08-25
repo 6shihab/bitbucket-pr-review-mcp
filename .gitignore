@@ -21,3 +21,9 @@ setup.log
 
 # Docker credential file (ADR-0007). Never committed.
 .env.docker
+
+# The shared server's credential vault (ADR-0008). Encrypted, and still never
+# committed: a repository is exactly where a stolen file comes from.
+config/credentials.sqlite3
+config/credentials.sqlite3-*
+*.vault.key
