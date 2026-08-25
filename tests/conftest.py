@@ -19,10 +19,22 @@ from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
 from bitbucket_pr_review_mcp.gate import CredentialGate
 from bitbucket_pr_review_mcp.keychain import Keychain
 from bitbucket_pr_review_mcp.references import Repository
-from bitbucket_pr_review_mcp.settings import Allowlist
+from bitbucket_pr_review_mcp.settings import Allowlist, Settings
 
 ALLOWED = "streamstech/db-explorer"
 FORBIDDEN = "streamstech/secret-payroll"
+
+
+@pytest.fixture(autouse=True)
+def _no_dotenv(monkeypatch):
+    """Settings reads `.env`, and a deployment has a real one. Tests must not.
+
+    Found when the shared server grew a filled-in `.env`: a test that unset
+    `BB_MCP_OIDC_CLIENT_SECRET` still saw a secret, because deleting the variable
+    does not touch the file underneath it. The suite had been passing on the
+    accident that nobody's `.env` held anything it asked about.
+    """
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
 
 
 @pytest.fixture

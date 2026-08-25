@@ -77,12 +77,16 @@ services:
         condition: service_started
 
     environment:
-      BB_MCP_PUBLIC_URL: http://localhost:8080/mcp
-      BB_MCP_OIDC_ISSUER: http://localhost:8080/realms/streamstech
-      BB_MCP_OIDC_CLIENT_SECRET: development-only-replace-before-deploying-too
-      BB_MCP_VAULT_FILE: /vault/credentials.sqlite3
+      # Defaults are the loopback development stack. `.env` overrides them for a
+      # real deployment; see .env.example. The issuer and the public URL have to
+      # name the same origin as KC_HOSTNAME below, exactly.
+      BB_MCP_PUBLIC_URL: ${BB_MCP_PUBLIC_URL:-http://localhost:8080/mcp}
+      BB_MCP_OIDC_ISSUER: ${BB_MCP_OIDC_ISSUER:-http://localhost:8080/realms/streamstech}
+      BB_MCP_OIDC_CLIENT_SECRET: ${BB_MCP_OIDC_CLIENT_SECRET:-development-only-replace-before-deploying-too}
+      BB_MCP_VAULT_FILE: ${BB_MCP_VAULT_FILE:-/vault/credentials.sqlite3}
       BB_MCP_VAULT_KEY_FILE: /run/secrets/vault.key
-      BB_MCP_LOG_LEVEL: INFO
+      BB_MCP_LOG_LEVEL: ${BB_MCP_LOG_LEVEL:-INFO}
+      BB_MCP_LOG_JSON: ${BB_MCP_LOG_JSON:-false}
 
     volumes:
       - ./config/repositories.yaml:/config/repositories.yaml:ro
@@ -122,13 +126,13 @@ services:
 
     environment:
       # Dev-only bootstrap admin. A real deployment sets these from a secret store.
-      KC_BOOTSTRAP_ADMIN_USERNAME: admin
-      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
 
       # The issuer people and tokens will name. It has to match what the review server is
       # configured with, exactly — a token whose `iss` differs by a trailing slash is a
       # token this server refuses, on purpose (RFC 8414's mix-up defence).
-      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME: ${BB_MCP_PUBLIC_ORIGIN:-http://localhost:8080}
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded

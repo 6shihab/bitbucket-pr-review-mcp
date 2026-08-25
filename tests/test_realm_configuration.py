@@ -9,6 +9,7 @@ so the two findings that cost the most are pinned here.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -21,6 +22,22 @@ REALM = json.loads(
 )
 COMPOSE = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
 PUBLIC_HOST = "https://review.streamstech.com"
+
+
+def composed(name: str) -> str:
+    """What the compose file gives `name`, with `${VAR:-default}` resolved to its
+    default.
+
+    The shared stack reads its origin from `.env` now, so these values are written
+    as interpolations. The default is still the loopback development stack, and the
+    default is what this file can check — a `.env` is gitignored and not here to
+    read. Drift between the realm and the *deployed* origin is caught by
+    `--health`, which compares the two at startup.
+    """
+    literal = re.search(rf"{name}:\s*(\S+)", COMPOSE).group(1)
+    interpolated = re.fullmatch(r"\$\{[A-Z_]+:-(.*)\}", literal)
+
+    return interpolated.group(1) if interpolated else literal
 
 CLIENTS = {client["clientId"]: client for client in REALM["clients"]}
 CLIENT = CLIENTS["bitbucket-pr-review"]
@@ -79,19 +96,14 @@ class TestTheAudienceMapper:
         token was minted with the old audience, the resource server refused it, and the
         symptom was a 401 immediately after a *successful* sign-in. Two files have to
         agree and neither one shows the other."""
-        import re
-
         audience = mappers(REVIEW_SCOPE)["mcp-audience"]["config"]["included.custom.audience"]
-        expected = re.search(r"BB_MCP_PUBLIC_URL:\s*(\S+)", COMPOSE).group(1)
 
-        assert audience == expected
+        assert audience == composed("BB_MCP_PUBLIC_URL")
 
     def test_the_issuer_the_realm_serves_is_the_one_configured(self):
         """Same class of drift, other half of the handshake."""
-        import re
-
-        hostname = re.search(r"KC_HOSTNAME:\s*(\S+)", COMPOSE).group(1)
-        issuer = re.search(r"BB_MCP_OIDC_ISSUER:\s*(\S+)", COMPOSE).group(1)
+        hostname = composed("KC_HOSTNAME")
+        issuer = composed("BB_MCP_OIDC_ISSUER")
 
         assert issuer.startswith(hostname + "/realms/")
 
