@@ -182,6 +182,27 @@ def main() -> None:
         gate.close()
 
 
+def _announce_whole_workspaces(allowlist: Allowlist) -> None:
+    """Say out loud that the boundary is a workspace rather than a list of repositories.
+
+    `workspace/*` is the widest entry the allowlist can hold, and the part that does not
+    show up anywhere is that it covers repositories created after it was written. That is
+    the whole point of it and also the thing nobody remembers, so it is said at every
+    startup rather than left in the file for somebody to notice.
+    """
+    whole = allowlist.whole_workspaces()
+    if not whole:
+        return
+
+    logger.warning(
+        "Allowlist admits {} entire — every repository in {}, including ones created "
+        "after this was configured. Bitbucket sells no permission that separates "
+        "commenting from merging (ADR-0002), so branch restrictions are what bounds this.",
+        ", ".join(f"{workspace}/*" for workspace in whole),
+        "them" if len(whole) > 1 else "it",
+    )
+
+
 def _startup_checks(
     settings: Settings,
     allowlist: Allowlist,
@@ -194,6 +215,8 @@ def _startup_checks(
     pull requests is not a token this server will hold, and starting anyway would leave
     that decision to whoever reads the logs — which is nobody (ADR-0002).
     """
+    _announce_whole_workspaces(allowlist)
+
     try:
         warning = gate.expiry_warning()
         if warning:
@@ -283,6 +306,10 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     from .http_app import CONNECT_PATH, build_http_app
     from .tokens import SigningKeys, TokenVerifier
     from .vault import CredentialVault, VaultKey
+
+    # Before anything that can refuse to start. This path does not run `_startup_checks`,
+    # and it is the deployment where the allowlist bounds more than one person's access.
+    _announce_whole_workspaces(allowlist)
 
     try:
         key = VaultKey.required()
@@ -449,11 +476,15 @@ def _run_health(
 
     concerns: list[str] = []
 
+    # "entries" rather than "repositories": one of them can be a whole workspace, and
+    # reporting `jantrik/*` as "1 repositories" would understate it by however many
+    # repositories that workspace holds.
     logger.info(
-        "Allowlist: {} repositories — {}",
+        "Allowlist: {} entries — {}",
         len(allowlist.names()),
         ", ".join(allowlist.names()),
     )
+    _announce_whole_workspaces(allowlist)
 
     try:
         key = VaultKey.required()

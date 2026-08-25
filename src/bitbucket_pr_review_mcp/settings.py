@@ -38,20 +38,43 @@ class Allowlist:
     """
 
     _permitted: frozenset[str]
+    _whole_workspaces: frozenset[str]
     _names: tuple[str, ...]
 
     @classmethod
-    def of(cls, repositories: list[Repository]) -> Allowlist:
-        if not repositories:
+    def of(
+        cls, repositories: list[Repository], workspaces: list[str] | None = None
+    ) -> Allowlist:
+        """`repositories` are named one by one; `workspaces` are admitted entire.
+
+        A whole workspace is the widest thing this list can say, and it is still a
+        different statement from having no list: it names a workspace somebody chose,
+        rather than deferring to whatever the credential turns out to reach.
+        """
+        whole = frozenset(workspace.strip().lower() for workspace in workspaces or [])
+        named = frozenset(
+            repo.full_name.lower()
+            for repo in repositories
+            if repo.workspace.lower() not in whole
+        )
+
+        if not named and not whole:
             raise ConfigError(
                 "The repository allowlist is empty, so this server would be able to reach "
                 f"nothing — and an absent list would let it reach everything. {ENTRY_FORMAT}"
             )
-        names = tuple(sorted({repo.full_name.lower() for repo in repositories}))
-        return cls(_permitted=frozenset(names), _names=names)
+
+        return cls(
+            _permitted=named,
+            _whole_workspaces=whole,
+            _names=tuple(sorted(named | {f"{workspace}/*" for workspace in whole})),
+        )
 
     def permits(self, repository: Repository) -> bool:
-        return repository.full_name.lower() in self._permitted
+        return (
+            repository.workspace.lower() in self._whole_workspaces
+            or repository.full_name.lower() in self._permitted
+        )
 
     def permits_workspace(self, workspace: str) -> bool:
         """Whether any allowlisted repository lives in this workspace.
@@ -64,10 +87,16 @@ class Allowlist:
         return workspace.strip().lower() in self.workspaces()
 
     def workspaces(self) -> frozenset[str]:
-        return frozenset(name.split("/", 1)[0] for name in self._permitted)
+        return self._whole_workspaces | frozenset(
+            name.split("/", 1)[0] for name in self._permitted
+        )
 
     def names(self) -> tuple[str, ...]:
         return self._names
+
+    def whole_workspaces(self) -> tuple[str, ...]:
+        """The workspaces admitted entire, for whoever has to say so out loud."""
+        return tuple(sorted(self._whole_workspaces))
 
 
 def load_allowlist(path: Path) -> Allowlist:
@@ -92,24 +121,50 @@ def load_allowlist(path: Path) -> Allowlist:
     if not isinstance(entries, list):
         raise ConfigError(f"'repositories:' in {path} must be a list. {ENTRY_FORMAT}")
 
-    return Allowlist.of([_read_entry(entry, path) for entry in entries])
+    read = [_read_entry(entry, path) for entry in entries]
+
+    return Allowlist.of(
+        repositories=[entry for entry in read if isinstance(entry, Repository)],
+        workspaces=[entry for entry in read if isinstance(entry, str)],
+    )
 
 
-def _read_entry(entry: Any, path: Path) -> Repository:
+def _read_entry(entry: Any, path: Path) -> Repository | str:
+    """One line of the allowlist: a repository, or a workspace name meaning all of it."""
     if not isinstance(entry, str):
         raise ConfigError(f"{entry!r} in {path} is not a repository name. {ENTRY_FORMAT}")
 
+    workspace, _, repo = entry.strip().partition("/")
+
+    if repo == "*" and "*" not in workspace:
+        return _read_workspace(workspace, entry, path)
+
     if "*" in entry:
         raise ConfigError(
-            f"{entry!r} in {path} is a wildcard. The allowlist has to be enumerated: a "
-            "pattern is how 'every repository I can reach' becomes the accidental "
-            f"default. {ENTRY_FORMAT}"
+            f"{entry!r} in {path} is a wildcard. Only a whole named workspace can be "
+            "written that way — 'workspace/*'. Anything else is a pattern, and a pattern "
+            "is how 'every repository I can reach' becomes the accidental default. "
+            f"{ENTRY_FORMAT}"
         )
 
     try:
         return Repository.parse(entry)
     except InvalidReference as exc:
         raise ConfigError(f"{entry!r} in {path} is not a repository. {ENTRY_FORMAT}") from exc
+
+
+def _read_workspace(workspace: str, entry: str, path: Path) -> str:
+    """`workspace/*`, checked as a workspace rather than taken on trust.
+
+    `Repository.parse` is what knows a slug from a typo, so the name is put through it
+    against a placeholder rather than being accepted because it sits before a star.
+    """
+    try:
+        return Repository.parse(f"{workspace}/placeholder").workspace
+    except InvalidReference as exc:
+        raise ConfigError(
+            f"{entry!r} in {path} does not name a workspace. {ENTRY_FORMAT}"
+        ) from exc
 
 
 class Settings(BaseSettings):

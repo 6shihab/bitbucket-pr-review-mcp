@@ -59,9 +59,18 @@ repositories:
   - streamstech/lent-manager
 ```
 
-The server refuses to start without it. An absent list is indistinguishable from
-permission to touch every repository your credential can reach, and wildcards are refused
-for the same reason.
+A whole workspace can be written as `jantrik/*`. It is the widest entry here — it covers
+repositories created after you write it — so the server says so at every startup:
+
+```yaml
+repositories:
+  - jantrik/*
+```
+
+The server refuses to start without a list. An absent one is indistinguishable from
+permission to touch every repository your credential can reach. Patterns narrower than a
+whole workspace (`*/db-explorer`, `streamstech/db-*`) are refused for the same reason:
+they are guesses about naming, and they take in whatever gets named that way next.
 
 ## Connecting your Bitbucket account
 

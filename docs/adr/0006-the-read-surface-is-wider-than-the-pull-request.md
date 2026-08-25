@@ -12,7 +12,8 @@ a linter.
 The cost is honest: a prompt-injected Caller — and pull request content is written by
 whoever opened it — can read repository contents beyond the change under review. The
 Allowlisted Repository set is what bounds that, which is why the server refuses to
-start with an empty or wildcard allowlist.
+start with an empty allowlist. Where that set is a whole workspace (`workspace/*`), the
+bound is the workspace — worth knowing, because this is the read surface it applies to.
 
 ## Code search needs its own guard
 

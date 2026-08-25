@@ -102,8 +102,14 @@ mechanism on this list that does not depend on this code being correct.
 
 Bounding all of it: the **Allowlisted Repository** set. Membership is configured, never
 inferred from what the credential happens to reach, and the server refuses to start with
-a missing, empty or wildcard list — an absent list is indistinguishable from permission to
-touch every repository the credential can see.
+a missing or empty list — an absent list is indistinguishable from permission to touch
+every repository the credential can see.
+
+One entry may name a whole workspace, `workspace/*`. That is still a configured boundary
+rather than an inferred one — somebody named that workspace — but it is the widest thing
+the list can say, and it admits repositories that did not exist when it was written, so
+startup warns about it by name. Narrower patterns are refused: a workspace is a thing
+somebody decides, whereas `db-*` is a guess about how repositories will be named.
 
 See [ADR-0002](adr/0002-comment-only-blast-radius.md).
 

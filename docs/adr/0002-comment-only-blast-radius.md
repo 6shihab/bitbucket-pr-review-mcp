@@ -28,7 +28,9 @@ So the ceiling rests on three mechanisms that fail differently:
    prerequisite we can document and check but cannot impose.
 
 A configured repository allowlist bounds all of this further; the server refuses to
-start with an empty or wildcard allowlist.
+start with an empty allowlist. A single entry may name a whole workspace
+(`workspace/*`), which is still configured rather than inferred, but is the widest thing
+the list can say — startup warns whenever one is in use.
 
 The single PUT exists for one purpose: keeping one canonical Summary Comment current
 across repeated reviews instead of stacking a new one each time. It is permitted only
