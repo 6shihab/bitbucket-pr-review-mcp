@@ -14,6 +14,8 @@ import httpx
 import pytest
 from asgi_lifespan import LifespanManager
 from starlette.applications import Starlette
+from starlette.responses import PlainTextResponse
+from starlette.routing import Route
 
 from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
 from bitbucket_pr_review_mcp.discovery import REVIEW_SCOPE, ProtectedResource
@@ -70,7 +72,9 @@ class Connected:
 
     def factory(self, forget):
         self.forget = forget
-        return Starlette(routes=[])
+        # A landing page at "/", as the real one has: it is what a person arriving with
+        # no access token must be able to reach.
+        return Starlette(routes=[Route("/", lambda request: PlainTextResponse("connect"))])
 
 
 @pytest.fixture
@@ -160,6 +164,38 @@ class TestTheMetadataDocument:
         document = (await caller.get(resource.metadata_path())).json()
 
         assert document["authorization_servers"] == [ISSUER]
+
+
+class TestReachingTheConnectPage:
+    """The page is mounted inside a catch-all that demands a token, so the only thing
+    standing between a person and a 401 is which of the two routes matches first."""
+
+    async def test_the_address_the_server_hands_out_reaches_it(self, caller):
+        """`gate.py` sends people to `<public>/connect`, with no trailing slash. A mount
+        matches only `/connect/...`, so without a redirect of its own that address falls
+        through to the token gate and answers the one person who cannot have a token."""
+        response = await caller.get("/connect", follow_redirects=True)
+
+        assert response.status_code == 200
+        assert response.text == "connect"
+
+    async def test_it_is_reachable_at_the_slashed_form_too(self, caller):
+        response = await caller.get("/connect/")
+
+        assert response.status_code == 200
+        assert response.text == "connect"
+
+    async def test_neither_form_asks_for_a_token(self, caller):
+        """A browser arriving to connect an account has none, by definition."""
+        for path in ("/connect", "/connect/"):
+            assert (await caller.get(path, follow_redirects=True)).status_code != 401
+
+    async def test_a_path_inside_the_page_is_not_swallowed_by_the_redirect(self, caller):
+        """`/connect/callback` and friends must reach the page, not be bounced back to
+        its front door — the redirect exists for the bare address and nothing else."""
+        response = await caller.get("/connect/nothing-here", follow_redirects=False)
+
+        assert response.status_code == 404
 
 
 class TestWhatAnUnauthenticatedCallerIsTold:

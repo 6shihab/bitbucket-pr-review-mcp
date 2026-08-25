@@ -25,7 +25,7 @@ import httpx
 from loguru import logger
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, RedirectResponse
 from starlette.routing import Mount, Route
 
 from .discovery import ProtectedResource
@@ -127,11 +127,28 @@ def build_http_app(
         # Deliberately outside `RequireToken`: a browser arriving to connect an account
         # has no access token, and demanding one would make the page unreachable by the
         # only people who need it. It has a login of its own.
+        #
+        # The bare address needs a route of its own. A mount matches `/connect/...` and
+        # not `/connect`, and the router's own add-a-slash redirect never runs here
+        # because the catch-all below matches everything — so `/connect` would land on
+        # the token gate and answer "this server needs an access token" to the one
+        # person who cannot have one. That is the address `gate.py` hands out, and the
+        # address anybody types.
+        routes.append(Route(CONNECT_PATH, _to_connect_page, methods=["GET"]))
         routes.append(Mount(CONNECT_PATH, connect))
 
     app = Starlette(routes=routes, lifespan=inner.lifespan)
     app.mount("", RequireToken(inner, verifier, resource))
     return app
+
+
+async def _to_connect_page(request: Request) -> RedirectResponse:
+    """Send the bare address to the mount, keeping any query string.
+
+    307 rather than 302: it preserves the method, so this stays correct if the page ever
+    takes a POST at its root. Not permanent — a browser that cached a 308 would keep
+    following it after this route stopped existing."""
+    return RedirectResponse(request.url.replace(path=CONNECT_PATH + "/"), status_code=307)
 
 
 def _header(scope, wanted: bytes) -> str | None:
