@@ -334,20 +334,28 @@ do not survive `docker volume rm bitbucket-pr-review-mcp_keycloak-db`.
 
 ### Claude Desktop
 
-Add this to `claude_desktop_config.json`
-(`%APPDATA%\Claude\` on Windows, `~/Library/Application Support/Claude/` on macOS — a
-Microsoft Store install keeps it under
-`%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`):
+Claude Desktop has no `mcp add` command; you edit `claude_desktop_config.json` by hand.
+Where it lives depends on how Claude was installed:
+
+| Install | Path |
+|---|---|
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Windows, Microsoft Store | `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+
+The Store path is the one that catches people out — an installation from the Store ignores
+the `%APPDATA%` file entirely, and editing the wrong one changes nothing with no error.
 
 ```json
 {
   "mcpServers": {
     "bitbucket-pr-review": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c", "npx",
         "-y", "mcp-remote",
         "http://localhost:8080/mcp",
-        "3334",
+        "3335",
         "--allow-http",
         "--static-oauth-client-info", "{\"client_id\":\"bitbucket-pr-review-cli\"}"
       ]
@@ -356,11 +364,35 @@ Microsoft Store install keeps it under
 }
 ```
 
-`deploy/claude_desktop_config.example.json` holds the same thing. Restart Claude Desktop,
-and the first tool call opens a Keycloak login (`dev` / `dev-only-not-for-production` in
-the development realm). After signing in, a tool call answers with a link to
-`/connect`, where you connect your Atlassian account — that page makes the browser sign in
-too, which is why the link is safe to see in a transcript.
+`deploy/claude_desktop_config.example.json` holds the same thing. Two details in there are
+doing real work:
+
+- **`cmd /c` in front of `npx`, on Windows.** Claude Desktop does not spawn through a
+  shell, so a bare `"command": "npx"` resolves to a batch file whose own path contains a
+  space, and the whole thing dies with `'C:\Program' is not recognized as an internal or
+  external command` in the log below. On macOS, drop `cmd` and `/c` and use `"command":
+  "npx"`.
+- **Port `3335` rather than `3334`.** That number is the bridge's own loopback port, and
+  Claude Code's registration already uses `3334`. Two bridges on one port means whichever
+  starts second cannot receive its OAuth callback. The realm registers
+  `http://127.0.0.1:*/oauth/callback`, so any free port works.
+
+Restart Claude Desktop — fully, from the tray, since closing the window leaves it running
+— and check it came up:
+
+```
+tail -f "$LOCALAPPDATA/Packages/Claude_*/LocalCache/Roaming/Claude/logs/mcp-server-bitbucket-pr-review.log"
+```
+
+`Proxy established successfully between local STDIO and remote
+StreamableHTTPClientTransport` is the line that means the bridge is talking to the server.
+`Server transport closed unexpectedly` means it exited instead — the reason is a few lines
+above it.
+
+The first tool call then opens a Keycloak login (`dev` / `dev-only-not-for-production` in
+the development realm, or an account you made above). After signing in, a tool call
+answers with a link to `/connect`, where you connect your Atlassian account — that page
+makes the browser sign in too, which is why the link is safe to see in a transcript.
 
 A few things worth knowing:
 

@@ -1,12 +1,14 @@
 {
   "mcpServers": {
     "bitbucket-pr-review": {
-      "command": "npx",
+      "command": "cmd",
       "args": [
+        "/c",
+        "npx",
         "-y",
         "mcp-remote",
         "http://localhost:8080/mcp",
-        "3334",
+        "3335",
         "--allow-http",
         "--static-oauth-client-info",
         "{\"client_id\":\"bitbucket-pr-review-cli\"}"
