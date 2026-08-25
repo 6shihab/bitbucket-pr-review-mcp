@@ -104,10 +104,63 @@ Three places hold something, and this server owns one of them:
 `--revoke` says all three every time it runs. Do all three. An offboarding checklist
 ticked after step one leaves somebody with access they are no longer supposed to have.
 
+## Configuring it
+
+Everything that differs between deployments is a variable in `.env`. Copy
+`.env.example`, fill it in, and neither `docker-compose.yaml` nor the realm file needs
+editing. The ones that matter most:
+
+| Variable | What it decides |
+|---|---|
+| `BB_MCP_PUBLIC_ORIGIN` | The one origin serving both the MCP endpoint and Keycloak |
+| `BB_MCP_PUBLIC_URL` | The audience in every access token, and what is typed into Claude |
+| `BB_MCP_OIDC_ISSUER` | The issuer this server will trust tokens from |
+| `BB_MCP_OIDC_CLIENT_SECRET` | This server's own secret, as the client behind `/connect` |
+| `BB_MCP_CONNECTOR_CLIENT_SECRET` | The secret pasted into Claude's connector settings |
+| `BB_MCP_VAULT_KEY_PATH` | Where the encryption key is, on the host |
+| `POSTGRES_PASSWORD` | Keycloak's database |
+| `KC_START_COMMAND` | `start-dev` for an afternoon, `start` for a deployment |
+
+The origin has to be one string that means the same thing in four places: the token's
+`iss`, the discovery document, the browser's address bar, and this server's
+configuration. Stating it once is what stops those drifting apart.
+
+### How the realm gets those values
+
+`--import-realm` substitutes `${NAME}` in the realm file from the environment, and
+`docker-compose.yaml` passes each one through with the development stack as its default.
+
+**The realm file's placeholders carry no defaults, and must not.** Keycloak resolves
+`${NAME:default}` to the default *without ever consulting the environment* — a realm
+written that way ignores every variable set for it and reports nothing wrong. The bare
+`${NAME}` is the form that reads the environment. This is the opposite of what the
+documentation's example suggests, and it was established by importing a realm and
+reading it back; `tests/test_realm_configuration.py` pins it.
+
+The consequence is that an unset variable is not a fallback. It imports the literal
+`${NAME}` as a client secret, and the symptom is a login that fails at its very last
+step.
+
+### Changing one afterwards
+
+The realm is imported **once**. `--import-realm` leaves an existing realm alone, so
+editing `.env` later does nothing until the realm is imported again:
+
+```
+docker compose --profile shared down
+docker volume rm bitbucket-pr-review-mcp_keycloak-db
+docker compose --profile shared up -d
+```
+
+That discards Keycloak's database — accounts and all — and nothing else. **Do not reach
+for `down -v`**: it removes every volume in the file, and one of them is the credential
+vault. Named explicitly, the vault survives, and nobody has to re-connect their Bitbucket
+account.
+
 ## What this document does not cover
 
-Running Keycloak. The `shared` profile in `docker-compose.yaml` is **development configuration** — an
-in-memory database, a bootstrap admin whose password is in the file, and a realm carrying
-a user whose password is also in the file. A real deployment gives Keycloak a real
-database, real secrets, and its own backups, and probably federates it to the identity
-provider you already have.
+Running Keycloak properly. The defaults in `docker-compose.yaml` are **development
+configuration**: a bootstrap admin whose password is in the file, a realm carrying a user
+whose password is in the realm file, and plain http on loopback. A real deployment
+overrides all of those in `.env`, gives Keycloak its own backups, and probably federates
+it to the identity provider you already have rather than keeping accounts in it.

@@ -17,33 +17,48 @@ import pytest
 from bitbucket_pr_review_mcp.discovery import REVIEW_SCOPE, ProtectedResource
 
 ROOT = Path(__file__).resolve().parents[1]
-REALM = json.loads(
-    (ROOT / "deploy" / "keycloak" / "realm-streamstech.json").read_text(encoding="utf-8")
-)
+REALM_TEXT = (
+    ROOT / "deploy" / "keycloak" / "realm-streamstech.json"
+).read_text(encoding="utf-8")
+REALM = json.loads(REALM_TEXT)
 COMPOSE = (ROOT / "docker-compose.yaml").read_text(encoding="utf-8")
 PUBLIC_HOST = "https://review.streamstech.com"
 
-
-def composed(name: str) -> str:
-    """What the compose file gives `name`, with `${VAR:-default}` resolved to its
-    default.
-
-    The shared stack reads its origin from `.env` now, so these values are written
-    as interpolations. The default is still the loopback development stack, and the
-    default is what this file can check — a `.env` is gitignored and not here to
-    read. Drift between the realm and the *deployed* origin is caught by
-    `--health`, which compares the two at startup.
-    """
-    literal = re.search(rf"{name}:\s*(\S+)", COMPOSE).group(1)
-    interpolated = re.fullmatch(r"\$\{[A-Z_]+:-(.*)\}", literal)
-
-    return interpolated.group(1) if interpolated else literal
 
 CLIENTS = {client["clientId"]: client for client in REALM["clients"]}
 CLIENT = CLIENTS["bitbucket-pr-review"]
 WEB = CLIENTS["bitbucket-pr-review-web"]
 CLI = CLIENTS["bitbucket-pr-review-cli"]
 SCOPES = {scope["name"]: scope for scope in REALM["clientScopes"]}
+
+# The realm's spelling is bare `${NAME}`; compose's is `${NAME:-default}`.
+PLACEHOLDER = re.compile(r"\$\{([A-Z_][A-Z0-9_]*)(?::-?(.*))?\}", re.DOTALL)
+PLACEHOLDER_NAMES = frozenset(
+    found.group(1) for found in PLACEHOLDER.finditer(REALM_TEXT)
+)
+
+
+def unwrap(literal: str) -> tuple[str | None, str | None]:
+    """`(variable, default)` for a placeholder, `(None, literal)` for a plain value.
+
+    The realm file writes `${VAR}` and gets `None` for a default, which is the whole
+    point: Keycloak resolves `${VAR:default}` to the default without ever reading the
+    environment, so a realm placeholder that carries one is a variable that does
+    nothing. Compose writes `${VAR:-default}` and holds the default for both.
+    """
+    found = PLACEHOLDER.fullmatch(literal)
+
+    return (found.group(1), found.group(2)) if found else (None, literal)
+
+
+def composed(name: str) -> tuple[str | None, str]:
+    """What docker-compose.yaml gives `name`, unwrapped.
+
+    A `.env` is gitignored and not here to read, so what this file can check is the
+    variable and the default — that the realm and compose name the same one. Drift
+    between them and the *deployed* origin is what `--health` compares at startup.
+    """
+    return unwrap(re.search(rf"{name}:\s*(\S+)", COMPOSE).group(1))
 
 
 def mappers(scope: str) -> dict[str, dict]:
@@ -87,7 +102,9 @@ class TestTheAudienceMapper:
         assert config["access.token.claim"] == "true"
 
     def test_the_audience_it_adds_is_a_resource_this_server_would_accept(self):
-        audience = mappers(REVIEW_SCOPE)["mcp-audience"]["config"]["included.custom.audience"]
+        """Checked against compose's default for the variable the realm names, which is
+        the value that reaches Keycloak when `.env` overrides nothing."""
+        _, audience = composed("BB_MCP_PUBLIC_URL")
 
         assert ProtectedResource.of(audience, "https://example.com/realms/x").resource == audience
 
@@ -98,12 +115,15 @@ class TestTheAudienceMapper:
         agree and neither one shows the other."""
         audience = mappers(REVIEW_SCOPE)["mcp-audience"]["config"]["included.custom.audience"]
 
-        assert audience == composed("BB_MCP_PUBLIC_URL")
+        variable, _ = unwrap(audience)
+
+        assert variable is not None
+        assert (variable, None) == (composed("BB_MCP_PUBLIC_URL")[0], None)
 
     def test_the_issuer_the_realm_serves_is_the_one_configured(self):
         """Same class of drift, other half of the handshake."""
-        hostname = composed("KC_HOSTNAME")
-        issuer = composed("BB_MCP_OIDC_ISSUER")
+        _, hostname = composed("KC_HOSTNAME")
+        _, issuer = composed("BB_MCP_OIDC_ISSUER")
 
         assert issuer.startswith(hostname + "/realms/")
 
@@ -157,11 +177,75 @@ class TestWhatClaudeNeedsToConnect:
         assert CLIENT["implicitFlowEnabled"] is False
 
 
+class TestTheRealmIsConfiguredByTheEnvironment:
+    """The realm file holds one deployment's origin and secrets, and there is more than
+    one deployment. `--import-realm` substitutes `${NAME:default}` from the environment,
+    so what differs between deployments is a variable and what is written down is the
+    development default.
+
+    Found the hard way: the audience was pinned to `localhost:8080` while the server
+    answered on a public hostname, and the symptom was a 401 immediately after a
+    *successful* sign-in."""
+
+    def test_every_placeholder_it_uses_is_supplied_by_compose(self):
+        """These carry no defaults, because a Keycloak placeholder that carries one
+        never reads the environment. So an unset variable is not a fallback — it is a
+        literal `${...}` imported as a client secret, and it fails at the last step of
+        a login rather than at boot."""
+        unsupplied = [
+            name
+            for name in PLACEHOLDER_NAMES
+            if not re.search(rf"^\s+{name}:", COMPOSE, re.MULTILINE)
+        ]
+
+        assert unsupplied == []
+
+    def test_none_of_them_carry_a_default(self):
+        """`${NAME:default}` resolves to the default and never consults the environment
+        — verified against Keycloak 26.4 by importing a realm and reading it back. A
+        default here would silently ignore everything `.env` sets."""
+        carrying = [
+            found.group(0)
+            for found in PLACEHOLDER.finditer(REALM_TEXT)
+            if found.group(2) is not None
+        ]
+
+        assert carrying == []
+
+    def test_it_parameterises_what_actually_moves(self):
+        """The origin, and both client secrets. Anything else being fixed is a choice."""
+        for name in (
+            "BB_MCP_PUBLIC_URL",
+            "BB_MCP_PUBLIC_ORIGIN",
+            "BB_MCP_OIDC_CLIENT_SECRET",
+            "BB_MCP_CONNECTOR_CLIENT_SECRET",
+        ):
+            assert name in PLACEHOLDER_NAMES
+
+    def test_the_realm_name_is_not_one_of_them(self):
+        """It is spelled into `default-roles-streamstech`, which a placeholder would
+        quietly fail to follow. Fixed on purpose rather than by omission."""
+        assert REALM["realm"] == "streamstech"
+        assert "streamstech" in REALM["users"][0]["realmRoles"][0]
+
+
 class TestNobodyCanShipThisByAccident:
-    @pytest.mark.parametrize(
-        "secret",
-        [CLIENT["secret"], REALM["users"][0]["credentials"][0]["value"]],
-    )
+    def test_the_client_secrets_are_variables_rather_than_values(self):
+        """Stronger than the warning string they used to carry: there is no secret in
+        this file to ship by accident, only the name of one."""
+        for client in (CLIENT, WEB):
+            variable, _ = unwrap(client["secret"])
+
+            assert variable in PLACEHOLDER_NAMES
+
+    def test_the_defaults_behind_them_say_they_are_not_for_production(self):
+        """The values themselves live in compose now, so that is where to look."""
+        for name in ("BB_MCP_OIDC_CLIENT_SECRET", "BB_MCP_CONNECTOR_CLIENT_SECRET"):
+            _, default = composed(name)
+
+            assert "development" in default.lower()
+
+    @pytest.mark.parametrize("secret", [REALM["users"][0]["credentials"][0]["value"]])
     def test_every_credential_in_it_says_it_is_not_for_production(self, secret):
         assert any(word in secret.lower() for word in ("development", "not-for-production"))
 

@@ -7,10 +7,12 @@
 # speaks MCP over stdio, so it has no port and nothing to `up` — the service exists so
 # the flags are written down once rather than remembered.
 #
-# THE SHARED PROFILE IS DEVELOPMENT CONFIGURATION. Keycloak runs in dev mode with an
-# in-memory database, a bootstrap admin whose password is in this file, and a realm
-# carrying a user whose password is in the realm file. Everything is plain http on
-# loopback. Read docs/deploying-the-shared-server.md before running it anywhere else.
+# THE SHARED PROFILE'S DEFAULTS ARE DEVELOPMENT CONFIGURATION. With no `.env` present
+# Keycloak runs in dev mode with an in-memory database, a bootstrap admin whose password
+# is in this file, and a realm carrying a user whose password is in the realm file —
+# everything plain http on loopback. Every one of those is a variable with a default, so
+# a real deployment overrides them in `.env` rather than editing this file; see
+# `.env.example`. Read docs/deploying-the-shared-server.md before running it anywhere.
 services:
   # ---------------------------------------------------------------- per-device (stdio)
   bitbucket-pr-review:
@@ -119,12 +121,46 @@ services:
       retries: 5
       start_period: 10s
 
+  # Keycloak's database. Without it Keycloak runs on an in-memory store, and a restart
+  # loses every account anybody signed in with. That is fine for an afternoon and wrong
+  # for anything people depend on.
+  postgres:
+    image: postgres:17-alpine
+    profiles: ["shared"]
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-keycloak}
+      POSTGRES_USER: ${POSTGRES_USER:-keycloak}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-only-replace-before-deploying}
+    volumes:
+      - keycloak-db:/var/lib/postgresql/data
+    security_opt: ["no-new-privileges:true"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak} -d ${POSTGRES_DB:-keycloak}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.4
     profiles: ["shared"]
-    command: ["start-dev", "--import-realm"]
+
+    # `start-dev` by default, because the defaults here are the development stack. A real
+    # deployment sets KC_START_COMMAND=start, which turns off the dev-mode conveniences
+    # and requires the hostname and database to be configured — which, here, they are.
+    command: ["${KC_START_COMMAND:-start-dev}", "--import-realm"]
+
+    depends_on:
+      postgres:
+        condition: service_healthy
 
     environment:
+      KC_DB: ${KC_DB:-postgres}
+      KC_DB_URL_HOST: ${KC_DB_HOST:-postgres}
+      KC_DB_URL_DATABASE: ${POSTGRES_DB:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-keycloak}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-development-only-replace-before-deploying}
+
       # Dev-only bootstrap admin. A real deployment sets these from a secret store.
       KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:-admin}
@@ -136,6 +172,34 @@ services:
       KC_HTTP_ENABLED: "true"
       KC_HEALTH_ENABLED: "true"
       KC_PROXY_HEADERS: xforwarded
+
+      # Read by the realm file, not by Keycloak itself: `--import-realm` substitutes
+      # `${NAME}` from the environment before the realm is created. Everything in that
+      # file which differs between deployments is one of these, so the origin is stated
+      # once in `.env` and the realm follows it.
+      #
+      # The defaults live here rather than in the realm file, and that is not a style
+      # choice. Keycloak resolves `${NAME:default}` to the default *without consulting
+      # the environment* — a realm written that way ignores every variable set for it and
+      # says nothing. Only the bare `${NAME}` reads the environment, so the realm carries
+      # no defaults and every one of these must be set. Checked against 26.4 by importing
+      # a realm and reading it back, because the documentation reads the other way.
+      #
+      # Substitution happens at *import*, and import happens once: the realm is in the
+      # database now, and `--import-realm` leaves an existing realm alone. Changing one
+      # of these later means dropping that database so the realm is imported again —
+      #
+      #     docker compose --profile shared down
+      #     docker volume rm bitbucket-pr-review-mcp_keycloak-db
+      #
+      # naming the volume rather than reaching for `down -v`, which would take the
+      # credential vault with it.
+      BB_MCP_PUBLIC_URL: ${BB_MCP_PUBLIC_URL:-http://localhost:8080/mcp}
+      BB_MCP_PUBLIC_ORIGIN: ${BB_MCP_PUBLIC_ORIGIN:-http://localhost:8080}
+      BB_MCP_OIDC_CLIENT_SECRET: ${BB_MCP_OIDC_CLIENT_SECRET:-development-only-replace-before-deploying-too}
+      BB_MCP_CONNECTOR_CLIENT_SECRET: ${BB_MCP_CONNECTOR_CLIENT_SECRET:-development-only-replace-before-deploying}
+      # `external` allows plain http on loopback; a public deployment wants `all`.
+      BB_MCP_SSL_REQUIRED: ${BB_MCP_SSL_REQUIRED:-external}
 
     volumes:
       # The realm: the three clients, the bitbucket:review scope, and the audience mapper
@@ -160,3 +224,4 @@ services:
 
 volumes:
   review-vault:
+  keycloak-db:

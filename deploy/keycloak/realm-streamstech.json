@@ -2,7 +2,7 @@
   "realm": "streamstech",
   "enabled": true,
   "displayName": "Streamstech",
-  "sslRequired": "external",
+  "sslRequired": "${BB_MCP_SSL_REQUIRED}",
   "registrationAllowed": false,
   "loginWithEmailAllowed": true,
   "duplicateEmailsAllowed": false,
@@ -61,7 +61,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.custom.audience": "http://localhost:8080/mcp",
+            "included.custom.audience": "${BB_MCP_PUBLIC_URL}",
             "id.token.claim": "false",
             "access.token.claim": "true",
             "introspection.token.claim": "true"
@@ -139,7 +139,7 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "development-only-replace-before-deploying",
+      "secret": "${BB_MCP_CONNECTOR_CLIENT_SECRET}",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
@@ -170,12 +170,13 @@
       "enabled": true,
       "protocol": "openid-connect",
       "publicClient": false,
-      "secret": "development-only-replace-before-deploying-too",
+      "secret": "${BB_MCP_OIDC_CLIENT_SECRET}",
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": false,
       "directAccessGrantsEnabled": false,
       "redirectUris": [
+        "${BB_MCP_PUBLIC_ORIGIN}/connect/callback",
         "http://localhost:8080/connect/callback",
         "https://review.streamstech.com/connect/callback"
       ],
