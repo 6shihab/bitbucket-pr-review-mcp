@@ -75,6 +75,21 @@ class IssuerUnreachable(RuntimeError):
     """The authorization server could not be consulted. Not the caller's fault."""
 
 
+def person_id(issuer: str, subject: str) -> str:
+    """The vault key for somebody, from the only two things that identify them.
+
+    Both doors compute this: the token check on every MCP request, and the browser login
+    that stores the credential. They must agree exactly — if they ever drift, credentials
+    are written to a row nothing reads, and the symptom is "setup keeps asking me".
+
+    Hashed rather than stored as `issuer#subject` because the vault keeps this column in
+    clear; it is what the threat model admits a stolen database file reveals. A digest
+    keeps that admission to "how many people are enrolled" instead of also handing over
+    an issuer and a directory of user ids.
+    """
+    return hashlib.sha256(f"{issuer}\x00{subject}".encode()).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class Caller:
     """One authenticated person, for the life of one request."""
@@ -107,7 +122,7 @@ class SigningKeys:
     http: httpx.AsyncClient
     now: Callable[[], float] = time.monotonic
     _keys: PyJWKSet | None = field(default=None, repr=False)
-    _jwks_uri: str | None = field(default=None, repr=False)
+    _metadata: dict | None = field(default=None, repr=False)
     _fetched_at: float = field(default=0.0, repr=False)
 
     async def for_key_id(self, key_id: str | None):
@@ -130,8 +145,24 @@ class SigningKeys:
             )
         return found
 
+    async def metadata(self) -> dict:
+        """The authorization server's discovery document, fetched once."""
+        if self._metadata is None:
+            await self._discover()
+        assert self._metadata is not None
+        return self._metadata
+
+    async def endpoint(self, named: str) -> str:
+        document = await self.metadata()
+        found = document.get(named)
+        if not isinstance(found, str) or not found:
+            raise IssuerUnreachable(
+                f"{self.issuer} publishes no {named}, so this server cannot use it."
+            )
+        return found
+
     async def _fetch(self) -> PyJWKSet:
-        uri = self._jwks_uri or await self._discover()
+        uri = (self._metadata or {}).get("jwks_uri") or await self._discover()
         payload = await self._get(uri, "the authorization server's keys")
         try:
             self._keys = PyJWKSet.from_dict(payload)
@@ -173,7 +204,7 @@ class SigningKeys:
             uri = document.get("jwks_uri")
             if not isinstance(uri, str) or not uri:
                 raise IssuerUnreachable(f"{candidate} names no jwks_uri.")
-            self._jwks_uri = uri
+            self._metadata = document
             return uri
 
         raise IssuerUnreachable(
@@ -296,4 +327,5 @@ __all__ = [
     "SigningKeys",
     "TokenRejected",
     "TokenVerifier",
+    "person_id",
 ]

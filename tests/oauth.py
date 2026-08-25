@@ -18,6 +18,10 @@ from bitbucket_pr_review_mcp.discovery import REVIEW_SCOPE
 
 ISSUER = "https://keycloak.streamstech.com/realms/streamstech"
 JWKS_URI = "https://keycloak.streamstech.com/realms/streamstech/protocol/openid-connect/certs"
+AUTHORIZE = "https://keycloak.streamstech.com/realms/streamstech/protocol/openid-connect/auth"
+TOKEN_ENDPOINT = (
+    "https://keycloak.streamstech.com/realms/streamstech/protocol/openid-connect/token"
+)
 RESOURCE = "https://review.streamstech.com/mcp"
 SUBJECT = "f:9c1e:alice"
 
@@ -61,6 +65,15 @@ class Keycloak:
         self.unreachable = False
         self.declared_issuer = ISSUER
 
+    def document(self) -> dict:
+        return {
+            "issuer": self.declared_issuer,
+            "jwks_uri": JWKS_URI,
+            "authorization_endpoint": AUTHORIZE,
+            "token_endpoint": TOKEN_ENDPOINT,
+            "code_challenge_methods_supported": ["S256"],
+        }
+
     def handle(self, request: httpx.Request) -> httpx.Response:
         if self.unreachable:
             return httpx.Response(503)
@@ -70,10 +83,10 @@ class Keycloak:
             if self.openid_configuration_missing:
                 return httpx.Response(404)
             self.metadata_hits += 1
-            return httpx.Response(200, json={"issuer": self.declared_issuer, "jwks_uri": JWKS_URI})
+            return httpx.Response(200, json=self.document())
         if path.startswith("/.well-known/oauth-authorization-server"):
             self.metadata_hits += 1
-            return httpx.Response(200, json={"issuer": self.declared_issuer, "jwks_uri": JWKS_URI})
+            return httpx.Response(200, json=self.document())
         if request.url == JWKS_URI:
             self.jwks_hits += 1
             return httpx.Response(200, json={"keys": self.keys})

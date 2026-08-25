@@ -44,15 +44,19 @@ class Setup(Protocol):
     def stop(self) -> None: ...
 
 
+LOOPBACK_NOTE = (
+    "The link works once and expires in five minutes. It is served by this "
+    "server on your own machine."
+)
+
+
 class SetupRequired(CredentialError):
     """No usable credential. The message names the URL that fixes it."""
 
-    def __init__(self, url: str, because: str) -> None:
+    def __init__(self, url: str, because: str, note: str = LOOPBACK_NOTE) -> None:
         super().__init__(
             f"{because} Open this page to connect Bitbucket, then run this tool again:\n"
-            f"    {url}\n"
-            "The link works once and expires in five minutes. It is served by this "
-            "server on your own machine."
+            f"    {url}\n" + note
         )
         self.url = url
 
@@ -166,4 +170,7 @@ class CredentialGate:
         return self._setup.start(saved)
 
     def _open(self, because: str) -> SetupRequired:
-        return SetupRequired(self.open_setup(), because)
+        """The note comes from whatever is serving setup: a loopback listener that dies
+        in five minutes says something different from a page behind a company login."""
+        note = getattr(self._setup, "note", LOOPBACK_NOTE)
+        return SetupRequired(self.open_setup(), because, note)

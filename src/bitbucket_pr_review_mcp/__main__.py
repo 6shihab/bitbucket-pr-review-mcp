@@ -237,7 +237,7 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     import uvicorn
 
     from .discovery import DiscoveryError, ProtectedResource
-    from .http_app import build_http_app
+    from .http_app import CONNECT_PATH, build_http_app
     from .tokens import SigningKeys, TokenVerifier
     from .vault import CredentialVault, VaultKey
 
@@ -257,15 +257,14 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
         ),
     )
 
-    logger.info("Serving {} as {}.", resource.resource, "MCP over HTTP")
-    logger.info("Tokens are accepted from {}.", resource.authorization_servers[0])
-    logger.info(
-        "{} person(s) have connected Bitbucket so far.", len(vault.enrolled())
-    )
+    connect_url = resource.resource.rsplit("/", 1)[0] + CONNECT_PATH
+    connect, setup = _connect_pages(settings, allowlist, vault, resource, connect_url)
 
-    app = build_http_app(
-        settings, allowlist, vault, verifier, resource, _SharedSetupNotBuiltYet()
-    )
+    logger.info("Serving MCP over HTTP at {}.", resource.resource)
+    logger.info("Tokens are accepted from {}.", resource.authorization_servers[0])
+    logger.info("{} person(s) have connected Bitbucket so far.", len(vault.enrolled()))
+
+    app = build_http_app(settings, allowlist, vault, verifier, resource, setup, connect)
     try:
         uvicorn.run(app, host=host, port=port, log_config=None)
     finally:
@@ -273,14 +272,60 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     return 0
 
 
-class _SharedSetupNotBuiltYet:
-    """Stands in for ticket 13. Says so rather than failing in an interesting way."""
+def _connect_pages(settings, allowlist, vault, resource, connect_url):
+    """The page that collects an Atlassian API token, behind a Keycloak sign-in.
 
-    def start(self, on_saved) -> str:
+    Without a client secret there is no way to make a browser prove who it is, and a page
+    that collects credentials without knowing who is filling it in is the confused deputy
+    ticket 13 exists to prevent. So it is not served at all, and callers are told why
+    rather than being sent to something that cannot work.
+    """
+    from .connect_app import ConnectHere, build_connect_app, cookie_secret
+    from .oidc import RelyingParty
+    from .tokens import SigningKeys
+    from .vault import VaultKey
+
+    if not settings.oidc_client_secret:
+        logger.warning(
+            "No {}: the page for connecting a Bitbucket account is not being served.",
+            "BB_MCP_OIDC_CLIENT_SECRET",
+        )
+        return None, _ConnectPageUnavailable()
+
+    async def verify(credential: Credential) -> Identity:
+        return await verify_credential(
+            credential, allowlist, lambda: build_http_client(settings.request_timeout_seconds)
+        )
+
+    issuer = resource.authorization_servers[0]
+    party = RelyingParty(
+        issuer=issuer,
+        client_id=settings.oidc_client_id,
+        client_secret=settings.oidc_client_secret,
+        redirect_uri=f"{connect_url}/callback",
+        keys=SigningKeys(issuer, build_http_client(settings.request_timeout_seconds)),
+        http=build_http_client(settings.request_timeout_seconds),
+    )
+    connect = build_connect_app(
+        party=party,
+        vault=vault,
+        verify=verify,
+        secret=cookie_secret(VaultKey.required().material),
+        public_url=resource.resource,
+    )
+    logger.info("People connect their Bitbucket account at {}.", connect_url)
+    return connect, ConnectHere(connect_url)
+
+
+class _ConnectPageUnavailable:
+    """Stands in for the connect page when this deployment cannot serve one."""
+
+    def start(self, on_saved=None) -> str:
         raise CredentialError(
             "You are authenticated, but this server has no Bitbucket credential for you "
-            "yet, and the page that collects one is not built (ticket 13). Until it is, "
-            "a credential can be put in the vault out of band."
+            "and cannot offer the page that collects one: it has no OIDC client secret, "
+            "so it cannot ask a browser to sign in. Whoever runs this server needs to "
+            "set BB_MCP_OIDC_CLIENT_SECRET."
         )
 
     def stop(self) -> None:

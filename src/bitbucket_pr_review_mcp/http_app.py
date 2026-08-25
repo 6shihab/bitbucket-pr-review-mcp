@@ -26,7 +26,7 @@ from loguru import logger
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Mount, Route
 
 from .discovery import ProtectedResource
 from .gate import CredentialGate, Setup
@@ -37,6 +37,7 @@ from .tokens import InsufficientScope, IssuerUnreachable, TokenRejected, TokenVe
 from .vault import CredentialVault
 
 MCP_PATH = "/mcp"
+CONNECT_PATH = "/connect"
 
 
 class RequireToken:
@@ -85,6 +86,7 @@ def build_http_app(
     verifier: TokenVerifier,
     resource: ProtectedResource,
     setup: Setup,
+    connect: Starlette | None = None,
     http_factory: Callable[[], httpx.AsyncClient] | None = None,
 ) -> Starlette:
     """The whole shared server as one ASGI application."""
@@ -107,10 +109,14 @@ def build_http_app(
     paths = {resource.metadata_path(), "/.well-known/oauth-protected-resource"}
 
     inner = mcp.http_app(path=MCP_PATH, transport="http", stateless_http=True)
-    app = Starlette(
-        routes=[Route(path, metadata, methods=["GET"]) for path in sorted(paths)],
-        lifespan=inner.lifespan,
-    )
+    routes: list = [Route(path, metadata, methods=["GET"]) for path in sorted(paths)]
+    if connect is not None:
+        # Deliberately outside `RequireToken`: a browser arriving to connect an account
+        # has no access token, and demanding one would make the page unreachable by the
+        # only people who need it. It has a login of its own.
+        routes.append(Mount(CONNECT_PATH, connect))
+
+    app = Starlette(routes=routes, lifespan=inner.lifespan)
     app.mount("", RequireToken(inner, verifier, resource))
     return app
 
@@ -132,4 +138,4 @@ async def _refuse(send, status: int, challenge: str | None, because: str) -> Non
     await send({"type": "http.response.body", "body": body})
 
 
-__all__ = ["MCP_PATH", "RequireToken", "build_http_app"]
+__all__ = ["CONNECT_PATH", "MCP_PATH", "RequireToken", "build_http_app"]

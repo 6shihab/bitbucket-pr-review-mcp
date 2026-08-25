@@ -138,3 +138,5 @@ class Settings(BaseSettings):
     public_url: str = ""
     oidc_issuer: str = ""
     vault_file: Path = Path("config/credentials.sqlite3")
+    oidc_client_id: str = "bitbucket-pr-review-web"
+    oidc_client_secret: str = ""

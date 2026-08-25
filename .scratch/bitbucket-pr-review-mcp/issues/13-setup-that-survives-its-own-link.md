@@ -1,46 +1,48 @@
 # 13 — Collecting the Bitbucket credential
 
-**Rewritten twice, and its size now depends on ticket 10B.**
+**Status:** done
 
-This ticket began as a device-authorization flow: a URL *and* a short code shown in chat,
-because a public setup link is no protection when whoever reads the transcript first can
-open it and **supply** a credential — their token bound to the victim's session, so the
-victim's review posts under the attacker's name.
+This ticket began as a device-authorization flow — a URL *and* a short code shown in
+chat — because a public setup link is no protection when whoever reads the transcript
+first can open it and **supply** a credential: their token, stored as somebody else's, so
+that person's review posts under the attacker's name.
 
-## If the authorization server is ours
+The code turned out to be unnecessary, and the reason is worth keeping. With Keycloak as
+the authorization server, the page that collects an Atlassian token sits **behind a
+sign-in of its own**. The link stops being a capability. Somebody who reads it in a
+transcript and opens it is asked who they are, and ends up connecting *their own* account
+— which is not an attack, it is just them using the server. The fix came from the
+transport, not from a longer secret.
 
-**This ticket nearly disappears.** Claude opens `/authorize` in the person's own browser as
-part of connecting, and that page *is* the credential form. No link is relayed through a
-tool answer, and the request carries `state` and a PKCE challenge that a transcript reader
-does not have. What remains is the form's own protections, below.
+That required the other half of OAuth: this server as an ordinary Keycloak *client*,
+which is `oidc.py`. Authorization code with PKCE, one token exchange, one ID token
+verified. Keycloak does the difficult half.
 
-## If the authorization server is Keycloak
+- [x] The credential page is unreachable without a Keycloak session, and a link opened by
+      somebody else enrols *them* — asserted, not assumed
+- [x] Verification against Bitbucket, with the display name shown back before anything is
+      stored, and over-broad scopes refused at the form — the loopback page's behaviour,
+      kept
+- [x] The credential is stored against the signed-in person and nobody else, under the
+      **same** vault key the access-token check computes — `person_id()` is defined once
+      and both doors use it, with a test that they agree
+- [x] CSRF-protected in its own right: a form token from the session cookie, plus Origin
+      validation, not only OAuth `state`
+- [x] Session cookies are signed, HttpOnly, `SameSite=Lax`, and `Secure` on https
+- [x] The token never appears in a page, a redirect, a query string or a log line
+- [x] An abandoned attempt leaves nothing stored — verification is held in memory for
+      five minutes and is not another person's to save
+- [x] Nothing a tool argument contains can start, extend or re-address it
+- [x] Disconnecting is on the same page, and says the token still exists at Atlassian
+      (which is most of ticket 15)
 
-**This ticket comes back, smaller and safer than its first version.** Keycloak knows
-nothing about Bitbucket API tokens, so collecting one is a second step: a tool called
-without a stored credential answers with a URL, and that page sits **behind the Keycloak
-session**.
+**Two things the tests pin because they would fail silently:**
 
-That is what makes the original attack impossible without a typed code. The link is no
-longer a capability. Somebody who reads it and opens it is made to authenticate, and
-whatever they enter is stored against *their own* account — not the session of the person
-the link was meant for. The confused deputy needs a link that acts on behalf of whoever
-holds it, and a page behind a login is not one.
+`state` is checked **before** the code is exchanged, so a login somebody else began
+cannot be completed in this browser. And a refused exchange does not repeat what Keycloak
+said — that body can carry the authorization code, and the message ends up in a page.
 
-Worth noticing: both designs solve it at the transport, and neither needs the six-digit
-code this ticket was originally built around.
-
-**Blocked by:** 10, 11, 12.
-
-**Status:** ready-for-agent, once 10B is decided
-
-- [ ] The existing `setup_app.py` form is reused: verification against Bitbucket, the
-      display name shown back before anything is stored, over-broad scopes refused
-- [ ] The credential is stored against the authenticated person and nobody else
-- [ ] Served only over TLS, no CORS headers, Origin validated
-- [ ] CSRF-protected in its own right, not only by OAuth `state`
-- [ ] The token never appears in a page, a redirect, a query string or a log line
-- [ ] An abandoned attempt leaves nothing stored
-- [ ] Nothing a tool argument contains can start, extend or re-address it
-- [ ] **If Keycloak:** the page is unreachable without a session, and a link opened by
-      somebody else enrols *them*, which a test asserts rather than assumes
+**Verified live**, against the Keycloak in `docker-compose.shared.yaml`: an anonymous
+visitor to `/connect` is redirected to Keycloak with PKCE `S256`, a `state`, and the right
+`redirect_uri`; and a tool called without a credential now answers with the connect URL
+and the honest note that the page will ask you to sign in.
