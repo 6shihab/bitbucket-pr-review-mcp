@@ -63,6 +63,18 @@ class VaultError(CredentialError):
     """Something is wrong with the credential store. The message says what to do."""
 
 
+def _running_as() -> str:
+    """This process's identity, in whatever terms the platform has for it.
+
+    Named at the moment of failure rather than baked into the message, because the
+    image's uid is a fact about the image and this code also runs on workstations.
+    """
+    try:
+        return f"uid {os.getuid()}"          # type: ignore[attr-defined]
+    except AttributeError:                    # Windows has no uid
+        return "the user this process runs as"
+
+
 class VaultKeyMissing(VaultError):
     """No encryption key was supplied. The server stops rather than inventing one."""
 
@@ -137,6 +149,18 @@ class VaultKey:
 
             try:
                 return cls.parse(Path(named).read_text(encoding="utf-8"))
+            except PermissionError as exc:
+                # A key made with `sudo` is root-owned and mode 600, and this process is
+                # not root. The file is plainly there, so the useful half of the answer
+                # is who is doing the reading — which nothing else says.
+                raise VaultKeyMissing(
+                    f"{KEY_FILE_ENV} names {named}, which cannot be read (Permission "
+                    f"denied). It has to be readable by {_running_as()}, which is what "
+                    "this server runs as — a key created with `sudo` is owned by root "
+                    "and readable by nobody else. Give the file to that user rather than "
+                    "widening its permissions; a key the whole host can read is most of "
+                    "the way to no key at all."
+                ) from exc
             except OSError as exc:
                 raise VaultKeyMissing(
                     f"{KEY_FILE_ENV} names {named}, which cannot be read ({exc.strerror}). "

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import sqlite3
 from datetime import date, datetime
+from pathlib import Path
 
 import pytest
 from loguru import logger
@@ -132,6 +133,32 @@ class TestTheKey:
         message = str(caught.value)
         assert "directory" in message.lower()
         assert "did not exist" in message, "the cause, not just the symptom"
+
+    def test_an_unreadable_key_says_which_user_could_not_read_it(
+        self, monkeypatch, tmp_path
+    ):
+        """The second half of the same deployment story.
+
+        A key made with `sudo` is owned by root and mode 600, and this server runs as an
+        unprivileged user inside the container. "Permission denied" is then true and
+        useless: the file is plainly there, and the reader is not named anywhere.
+        """
+        secret = tmp_path / "vault.key"
+        secret.write_text("irrelevant", encoding="utf-8")
+
+        def refuse(*args, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(Path, "read_text", refuse)
+        monkeypatch.delenv(KEY_ENV, raising=False)
+        monkeypatch.setenv(KEY_FILE_ENV, str(secret))
+
+        with pytest.raises(VaultKeyMissing) as caught:
+            VaultKey.required()
+
+        message = str(caught.value)
+        assert "Permission denied" in message
+        assert "readable by" in message, "say who has to be able to read it"
 
     def test_the_key_does_not_print_itself(self, key):
         assert key.exported() not in repr(key)

@@ -57,10 +57,19 @@ the worst property a failure can have.
 sudo mkdir -p /etc/bb-pr-mcp
 python3 -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())" \
   | sudo tee /etc/bb-pr-mcp/vault.key >/dev/null
-sudo chmod 600 /etc/bb-pr-mcp/vault.key
+
+# The container runs as uid 10001. A key made with sudo is root-owned and mode
+# 600, which that user cannot read — give it the file rather than widening it.
+sudo chown 10001:10001 /etc/bb-pr-mcp/vault.key
+sudo chmod 400 /etc/bb-pr-mcp/vault.key
 ```
 
 Then point `.env` at it — `BB_MCP_VAULT_KEY_PATH=/etc/bb-pr-mcp/vault.key`.
+
+**The ownership is the step that gets skipped.** `chmod 644` would also make the server
+start, and it is the wrong fix: a key every account on the host can read is most of the
+way to no key at all. The uid is `reviewer` in the image — `docker run --rm --entrypoint
+sh bitbucket-pr-review-mcp:local -c id` says which, if it ever changes.
 
 **Absolute, and not a relative path**, because a relative bind source is resolved against
 the project directory: `./.bb-pr-mcp/vault.key` means one file on a laptop and a different
