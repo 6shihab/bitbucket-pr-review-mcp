@@ -283,6 +283,55 @@ which should report `Scope: User config` and `Status: ✔ Connected`. A session 
 MCP servers when it starts, so an already-running Claude Code will not see a
 newly-registered server until it is restarted.
 
+### Giving somebody an account
+
+The realm ships one user, `dev` / `dev-only-not-for-production`, which is a development
+credential and says so. Everybody else needs an account in Keycloak before they can sign
+in — that is a separate thing from connecting their Bitbucket account afterwards, which
+they do themselves at `/connect`.
+
+**In the admin console.** Open `http://localhost:8080/admin`, sign in as the bootstrap
+admin (`KC_BOOTSTRAP_ADMIN_USERNAME` / `KC_BOOTSTRAP_ADMIN_PASSWORD` from your `.env`),
+switch the realm picker from *master* to *streamstech*, then *Users → Add user*. Fill in
+username, email, **first name and last name**, tick *Email verified*, and create. Then
+*Credentials → Set password*, and turn **Temporary off** unless you want them prompted to
+change it at first login.
+
+**Or from the command line**, which is easier to repeat:
+
+```
+docker exec bitbucket-pr-review-mcp-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+  config credentials --server http://localhost:8080 --realm master \
+  --user admin --password "$KC_BOOTSTRAP_ADMIN_PASSWORD"
+
+docker exec bitbucket-pr-review-mcp-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+  create users -r streamstech \
+  -s username=somebody -s email=somebody@example.com -s emailVerified=true \
+  -s firstName=Some -s lastName=Body -s enabled=true
+
+docker exec bitbucket-pr-review-mcp-keycloak-1 /opt/keycloak/bin/kcadm.sh \
+  set-password -r streamstech --username somebody --new-password 'their-password'
+```
+
+Under Git Bash, prefix each of these with `MSYS_NO_PATHCONV=1` or `/opt/keycloak/...` is
+rewritten into a Windows path and `docker exec` reports that the file does not exist.
+
+Two things that are easy to get wrong, both of which fail at *login* rather than at
+creation, with a message that does not point at the cause:
+
+- **First and last name are required.** Keycloak's user profile treats them as mandatory,
+  so an account created without them authenticates with `invalid_grant: Account is not
+  fully set up`. Nothing warns you when the account is made.
+- **`kcadm.sh set-password` without `-t` is already permanent**; passing `-t` makes it
+  temporary and leaves the same required action pending.
+
+No roles or group memberships are needed. A new account gets `default-roles-streamstech`
+automatically, and that is enough — this server authorizes on the `bitbucket:review`
+scope, which is requested during the OAuth flow and consented to, not granted in advance.
+
+Accounts live in Keycloak's database, which is a volume. They survive restarts, and they
+do not survive `docker volume rm bitbucket-pr-review-mcp_keycloak-db`.
+
 ### Claude Desktop
 
 Add this to `claude_desktop_config.json`
