@@ -1,6 +1,6 @@
 # Bitbucket PR Review MCP — the shared server
 
-Status: draft, three decisions outstanding (see [Assumptions](#assumptions))
+Status: the first decision is made (2026-08-25) — see [Decisions](#decisions)
 
 ## Problem Statement
 
@@ -127,34 +127,38 @@ belongs in a comment where the cache is built, not only here.
 
 ### Authentication of Callers
 
-A bearer token per enrolled person, issued by an operator command, presented by the MCP
-client on every request. Chosen over OAuth against an identity provider because it works
-with any client that can set a header and needs nothing else deployed — but see
-[Assumptions](#assumptions): if the target clients are Claude Desktop and Claude Code
-specifically, their remote-MCP support expects OAuth, and that changes this decision.
+**Decided 2026-08-25: OAuth, because the target client is Claude on the web.** The team
+has a Claude Team subscription and wants this added as a custom connector, so that an
+Owner adds it once for the organisation and each person then connects it and supplies
+their own Atlassian email and API token.
 
-The bearer token identifies a person, not a device, and it is not the Bitbucket
-credential. Losing it lets somebody use that person's Bitbucket access through this
-server; it does not hand them the token itself.
+That is exactly the model Claude's connectors implement: the connector is configured
+organisation-wide, and every member authenticates individually, so Claude only reaches
+what that person's own credential reaches. It is also the model this spec wanted anyway.
+
+Bearer tokens are no longer on the table. Claude does support a fixed header credential,
+but an administrator enters it once and the whole organisation shares it — one credential,
+not one per person. The requirement rules it out.
+
+The full endpoint list, the PKCE and audience rules, the redirect URI, the timeouts and
+the client-registration choice are in ticket 10.
 
 ### The setup flow
 
-1. A tool called without a Bitbucket credential answers with a URL **and a six-character
-   code**, both bound to the calling session.
-2. The Reviewer opens the URL. The page asks for the code first.
-3. With the right code, it asks for the Atlassian account email and API token, verifies
-   them against Bitbucket, and shows the returned display name back.
-4. On confirmation the credential is encrypted and stored against that person.
-5. The code is single-use, expires in ten minutes, and is rate-limited: five wrong
-   attempts burn it.
+**The OAuth authorization page is the credential page.** Claude opens `/authorize` in the
+person's own browser; that page asks for the Atlassian email and API token, verifies them
+against Bitbucket, shows the returned display name back, stores the credential in the
+vault against a person id, and redirects to Claude with an authorization code.
 
-The code is the whole point. ADR-0004 accepted the setup link travelling through the
-model's transcript because the link was loopback-only; a public link needs something the
-transcript reader does not have, and a code typed by the person is that.
+Nothing travels through the model's transcript, so the six-character code this spec
+proposed is unnecessary and has been removed. The attack it defended against — a
+transcript reader supplying *their* credential into somebody else's session — requires a
+link that can be opened by whoever holds it, and an OAuth redirect carrying `state` and a
+PKCE challenge is not that.
 
-Without it the attack is not "somebody steals a credential" — it is "somebody *supplies*
-one": their token, bound to the victim's session, so the victim's review posts under the
-attacker's account. A confused deputy made out of a URL.
+One thing the transport does not solve: `/authorize` is reachable by anyone, and Claude
+does not tell us which of its users is at the other end. Enrolment is therefore gated on
+the verified Bitbucket account's email domain, which is ticket 10's last open question.
 
 ### The store
 
@@ -185,18 +189,19 @@ never a setup code, never a full pull request body. A person's email and account
 in scope; their code and credentials are not. The logs should be safe to ship somewhere
 central, and there should be a test asserting that.
 
-## Assumptions
+## Decisions
 
-Three decisions are not made here and change the work materially:
-
-1. **Which MCP clients matter.** Bearer tokens work everywhere but are unusual for remote
-   MCP; Claude Desktop and Claude Code expect OAuth for remote servers. If those are the
-   targets, ticket 1 becomes an OAuth implementation.
-2. **Where it runs, and what is already there.** An existing identity provider, a
-   secrets manager, or a Kubernetes cluster each change the answers about keys and TLS.
-3. **How many people, and are they one team?** Ten colleagues on one allowlist is a
-   different risk calculation from fifty across several teams — and the second probably
-   wants per-person repository scoping, which this spec does not include.
+1. **Which MCP clients matter** — *settled 2026-08-25.* Claude on the web, Team plan, as a
+   custom connector. This makes the server an OAuth authorization server (ticket 10) and
+   deletes most of ticket 13.
+2. **Where it runs, and what is already there** — *open, and needed to deploy rather than
+   to build.* Required: a public HTTPS hostname with a real certificate, since Anthropic's
+   servers connect to it. Useful: Anthropic's requests come from `160.79.104.0/21`, so the
+   MCP endpoint can be firewalled to that range and only `/authorize` need face the open
+   internet.
+3. **How many people, and are they one team?** — *open.* One team on one allowlist is the
+   assumption throughout. Several teams probably wants per-person repository scoping, which
+   this spec still does not include.
 
 ## Out of Scope
 

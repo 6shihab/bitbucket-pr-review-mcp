@@ -1,30 +1,29 @@
-# 13 — Setup that survives its own link being read
+# 13 — The credential form, now that it is an OAuth consent page
 
-**What to build:** A Reviewer's first tool call answers with a URL **and a short code**.
-The page will not take a credential without the code. Holding the link is not enough.
+**Rewritten 2026-08-25, and most of it was deleted.** This ticket used to be a
+device-authorization flow: a URL *and* a short code shown in chat, because a public setup
+link is useless protection when whoever reads the transcript first can open it and
+**supply** a credential — their token bound to the victim's session, so the victim's
+review posts under the attacker's name.
 
-ADR-0004 accepted the setup link travelling through the model's transcript, and named the
-reason: loopback-only, single-use, minutes. A public URL voids that acceptance, and the
-attack it opens is not the obvious one. Whoever reads the link first cannot steal a
-credential that is not there yet — they can **supply** one. Their token, bound to the
-victim's session, so the victim's review posts under the attacker's account and every
-comment lands with the attacker's name on it. A confused deputy made out of a URL.
+Deciding ticket 10 in favour of OAuth removes the premise. Claude opens `/authorize` in
+the person's own browser as part of the connector flow. No link is relayed through a tool
+answer, nothing is pasted into a chat, and the request carries `state` and a PKCE
+challenge that a transcript reader does not have. The confused deputy has nowhere to
+stand, and it is worth noticing that the fix came from the transport rather than from a
+cleverer token.
 
-A longer token does not fix that. Something the transcript reader does not have does, and
-a code typed by the person is that.
+What remains is the form itself, which mostly exists already in `setup_app.py`.
 
 **Blocked by:** 10, 11, 12.
 
 **Status:** ready-for-agent
 
-- [ ] A tool called without a Bitbucket credential answers with a URL and a code, both
-      bound to the calling session
-- [ ] The page refuses every credential until the right code is entered
-- [ ] The code is single-use, expires within ten minutes, and five wrong attempts burn it
-- [ ] A code from one session cannot complete setup for another
-- [ ] The credential is verified against Bitbucket and the display name shown back before
-      anything is stored, as it is today
+- [ ] The existing setup page becomes the `/authorize` consent page, keeping its
+      verification against Bitbucket and its display-name confirmation
 - [ ] Over-broad scopes are refused at the form, as they are today
-- [ ] The page sets no CORS headers, validates Origin, and is served only over TLS
-- [ ] The code never appears in a log, and the token never appears in a page
-- [ ] Nothing a tool argument contains can start, extend or re-address a setup session
+- [ ] It is served only over TLS, sets no CORS headers, and validates Origin
+- [ ] The form is CSRF-protected in its own right, not only by OAuth `state`
+- [ ] The token never appears in a page, a redirect, a query string or a log line
+- [ ] An abandoned authorization leaves nothing stored
+- [ ] Nothing a tool argument contains can start, extend or re-address an authorization
