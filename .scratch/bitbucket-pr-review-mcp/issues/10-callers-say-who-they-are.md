@@ -15,38 +15,57 @@ first and does not wait on anything.
 
 ## 10A — This server is an OAuth resource server
 
+**Status: the verification is built; the transport wiring waits for ticket 12.**
+`tokens.py` turns an `Authorization` header into a `Caller` and a person id;
+`discovery.py` produces the metadata document and the `WWW-Authenticate` challenge.
+Both are pure and tested against real RSA signatures over a mocked issuer. What is
+left is attaching them to requests, which needs an HTTP surface to attach to.
+
 Validate a token, learn who the caller is, find their credential. That code is identical
 whether the tokens come from Keycloak or from an authorization server we write, which is
 why it is separated out.
 
-**Status:** ready-for-agent
-
 - [ ] Every MCP request without a valid token answers **401** with
       `WWW-Authenticate: Bearer resource_metadata="..."`. Claude does **not** honour that
       header on a 200, so a tool-level error is not a substitute
-- [ ] `/.well-known/oauth-protected-resource` (RFC 9728) serves a document whose
+- [x] `/.well-known/oauth-protected-resource` (RFC 9728) serves a document whose
       `resource` equals the MCP URL **exactly as the Owner types it into Claude**, path
       included, and whose `authorization_servers` names the issuer — first entry wins,
       Claude does not fall back to later ones
-- [ ] Access tokens are verified against the issuer's JWKS: signature, issuer, expiry
-- [ ] **The audience is checked.** A token minted for another resource is refused, and
+- [x] Access tokens are verified against the issuer's JWKS: signature, issuer, expiry
+- [x] **The audience is checked.** A token minted for another resource is refused, and
       there is a test that mints one and watches it bounce
-- [ ] The token's subject maps to a person id, and that person's vault row is what the
-      session uses — decided at the transport, never from a tool argument
+- [x] The token's subject maps to a person id — `sha256(issuer + subject)`, so the
+      vault's one plaintext column is not also a directory of user ids
+- [ ] That person's vault row is what the session uses — needs ticket 12's transport
 - [ ] A caller whose subject has no stored Bitbucket credential is sent to connect one,
       rather than getting an error that reads like a bug
-- [ ] Log lines name the person, never the token
+- [x] Log lines name the person, never the token
 - [ ] The stdio server keeps working with no authentication, because there is one caller
+
+
+**Two checks in `tokens.py` are load-bearing, and a verifier without them looks
+identical from the outside:**
+
+* **The algorithm allowlist.** Trusting the token's own `alg` accepts `none`, and accepts
+  `HS256` signed with the issuer's *public* key — which anybody can fetch. Both forgeries
+  are in the tests, the second hand-crafted because PyJWT refuses to produce it.
+* **The audience.** Without it, a token some other service minted for itself is accepted
+  here, and its bearer is handed somebody's Bitbucket credential.
+
+Also asserted: RFC 8414's mix-up defence (metadata naming a different issuer is refused),
+key rotation causing exactly one refetch, and rubbish key ids being unable to make this
+server hammer Keycloak.
 
 ## 10B — Where the authorization server comes from
 
-**Open. See the two findings below, which are the reason this is not a coin toss.**
+**Decided 2026-08-25: Keycloak, in Docker, alongside the MCP server.**
 
 Either Keycloak issues the tokens and this server only validates them, or the server
 implements the authorization endpoints itself. The consequences reach further than the
 endpoint list — they decide what "who is this person" means, and whether ticket 13 exists.
 
-### If Keycloak
+### Keycloak, and what it needs
 
 Keycloak publishes an official MCP authorization-server integration and, since 26.7,
 Client ID Metadata Document support. It brings PKCE, refresh rotation, discovery, DCR and
@@ -78,7 +97,7 @@ somebody in Keycloak and their access is gone, which beats the email-domain chec
 a distance. And the open-enrolment problem disappears entirely, because `/authorize`
 belongs to Keycloak and Keycloak decides who may authenticate.
 
-### If we implement it
+### What was not chosen, and what it would have cost
 
 One login instead of two: the person's Atlassian email and API token, verified against
 Bitbucket, *are* the authentication, and the authorization page is the credential page.

@@ -130,3 +130,10 @@ class Settings(BaseSettings):
     max_commits: int = 50
     max_search_results: int = 25
     max_comments: int = 200
+
+    # The shared deployment (tickets 10-16). Both are empty on a per-device install, and
+    # nothing here refuses to start without them: stdio has one caller and needs neither.
+    # `discovery.ProtectedResource` refuses the empty string, so the HTTP transport fails
+    # to build rather than serving a document that describes nothing.
+    public_url: str = ""
+    oidc_issuer: str = ""
