@@ -96,6 +96,25 @@ services:
     cap_drop: ["ALL"]
     security_opt: ["no-new-privileges:true"]
 
+    # The image's own HEALTHCHECK is `--check`, which is right for the per-device server
+    # and wrong here: it asks the OS keychain for a credential, and a container has no
+    # keychain (ADR-0007). `--health` is not the answer either — it is an operator's
+    # fitness report, and it exits non-zero on advisory concerns like "this is plain
+    # http", which is true of this stack by design. A liveness probe should ask one
+    # question: is the server answering?
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/.well-known/oauth-protected-resource/mcp',timeout=5)",
+        ]
+      interval: 10s
+      timeout: 6s
+      retries: 5
+      start_period: 10s
+
   keycloak:
     image: quay.io/keycloak/keycloak:26.4
     profiles: ["shared"]
