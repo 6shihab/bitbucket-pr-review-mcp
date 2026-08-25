@@ -261,6 +261,14 @@ prefixed `BB_MCP_`:
 | `BB_MCP_MAX_SEARCH_RESULTS` | `25` | Search matches |
 | `BB_MCP_MAX_COMMENTS` | `200` | Comments read per pull request |
 
+Two more exist and are empty until the shared deployment is finished — the per-device
+install described above needs neither, because stdio has exactly one caller:
+
+| Setting | What it does |
+|---|---|
+| `BB_MCP_PUBLIC_URL` | The address Claude connects to, exactly as it is typed into the connector. It is what tokens must name as their audience |
+| `BB_MCP_OIDC_ISSUER` | The Keycloak realm that issues those tokens. It must match the issuer in the realm's discovery document exactly — a trailing slash is a difference |
+
 Every ceiling is stated in the response when it bites. Truncation is never silent: a
 Caller that cannot tell a truncated diff from a complete one will review the missing half
 by assuming it was fine.

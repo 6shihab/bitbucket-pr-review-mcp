@@ -224,6 +224,16 @@ class TokenVerifier:
             )
         except jwt.ExpiredSignatureError as exc:
             raise TokenRejected("This access token has expired.") from exc
+        except jwt.MissingRequiredClaimError as exc:
+            # Worth naming. A token with no audience at all is almost always a realm that
+            # is not adding one, and "could not be verified" sends whoever is debugging
+            # it to look at signatures instead.
+            raise TokenRejected(
+                f"This access token carries no {exc.claim!r} claim, so it cannot be "
+                "accepted. If tokens are missing an audience, the authorization server "
+                "is not adding one — Keycloak needs an audience mapper on the scope this "
+                "server requires, because it does not implement RFC 8707."
+            ) from exc
         except jwt.InvalidAudienceError as exc:
             raise TokenRejected(
                 "This access token was not issued for this server. It names a different "

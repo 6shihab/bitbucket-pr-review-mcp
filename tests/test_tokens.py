@@ -63,6 +63,9 @@ def token_for(private, kid: str = KID, **overrides) -> str:
         "scope": f"openid {REVIEW_SCOPE}",
     }
     claims.update(overrides)
+    # A claim set to None is *dropped*, not sent as null: the interesting token is the
+    # one a realm without an audience mapper actually mints, which has no `aud` key.
+    claims = {name: value for name, value in claims.items() if value is not None}
     return jwt.encode(claims, private, algorithm="RS256", headers={"kid": kid})
 
 
@@ -187,6 +190,14 @@ class TestTokensThatMustNotGetIn:
 
         with pytest.raises(TokenRejected, match="audience"):
             await verifier.verify(f"Bearer {elsewhere}")
+
+    async def test_one_with_no_audience_at_all_says_which_claim_is_missing(self, verifier, signing):
+        """Found by running it: a realm with no audience mapper mints tokens like this,
+        and "could not be verified" sends whoever is debugging it to look at signatures."""
+        anonymous = token_for(signing, aud=None)
+
+        with pytest.raises(TokenRejected, match="carries no 'aud'"):
+            await verifier.verify(f"Bearer {anonymous}")
 
     async def test_one_from_another_issuer(self, verifier, signing):
         foreign = token_for(signing, iss="https://someone-elses-keycloak.example/realms/x")

@@ -160,6 +160,10 @@ class TestTheFactsWorthKeeping:
             "escapes HTML",
             "does not support PKCE",
             "app passwords were removed",
+            "does not read `WWW-Authenticate` off a 200",
+            "Keycloak does not implement RFC 8707",
+            "replaces the built-in set",
+            "granted whether or not it was requested",
         ],
     )
     def test_the_fact_is_recorded(self, fact):

@@ -67,6 +67,21 @@ endpoint list — they decide what "who is this person" means, and whether ticke
 
 ### Keycloak, and what it needs
 
+**Standing up 2026-08-25: `docker-compose.shared.yaml` plus
+`deploy/keycloak/realm-streamstech.json`.** Keycloak runs, the realm imports, and a
+real token from it is accepted by `tokens.py` while four kinds of bad token are
+refused. Two defects were found by doing that and would not have been found by
+reading — both are now in `docs/architecture.md` and pinned by
+`tests/test_realm_configuration.py`:
+
+1. Declaring any `clientScopes` in a realm import **replaces** the built-in set. The
+   realm came up without `basic`, so tokens carried no `sub` and every one was
+   rejected.
+2. A **default** client scope is granted whether or not it is requested. With
+   `bitbucket:review` as a default, a token minted for `scope=openid` still carried
+   it and the scope check here was decorative. Optional fixes it — and an unasked
+   token then has no audience either, so it fails twice.
+
 Keycloak publishes an official MCP authorization-server integration and, since 26.7,
 Client ID Metadata Document support. It brings PKCE, refresh rotation, discovery, DCR and
 real user management, none of which then has to be written here or reviewed here.

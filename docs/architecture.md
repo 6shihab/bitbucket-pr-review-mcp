@@ -363,6 +363,27 @@ and were corrected only by running against the real API.
   Together those are why authentication is a pasted API token rather than OAuth
   ([ADR-0003](adr/0003-atlassian-api-token-not-oauth.md)).
 
+And, from standing the shared deployment's authorization server up rather than reading
+about it:
+
+- **Claude does not read `WWW-Authenticate` off a 200.** A missing credential has to be a
+  401 or the connector never learns where to send anybody, and the only symptom is
+  "Couldn't reach the MCP server".
+- **Keycloak does not implement RFC 8707.** It ignores the `resource` parameter Claude
+  sends on every authorization and token request, so tokens carry no audience for this
+  server unless an audience mapper puts one there — and this server refuses tokens with
+  no audience, correctly and confusingly.
+- **Declaring any `clientScopes` in a Keycloak realm import replaces the built-in set**
+  rather than adding to it. The first realm came up with only the scope it declared, so
+  access tokens carried no `sub` and every one of them was rejected.
+- **A default client scope is granted whether or not it was requested.** With
+  `bitbucket:review` as a default, a token minted for `scope=openid` still carried it and
+  the scope check this server makes was decorative. Optional is what makes asking mean
+  something — and it also means an unasked token has no audience, so it fails twice.
+- **Keycloak's client registration endpoint is advertised but not anonymous** — it answers
+  403 without an initial access token. Worth knowing before deciding that Dynamic Client
+  Registration is a hole; the reason to avoid it here is client sprawl, not exposure.
+
 ## Where each decision shows up
 
 | ADR | In the code |
