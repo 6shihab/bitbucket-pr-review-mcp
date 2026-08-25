@@ -27,3 +27,4 @@ setup.log
 config/credentials.sqlite3
 config/credentials.sqlite3-*
 *.vault.key
+.bb-pr-mcp

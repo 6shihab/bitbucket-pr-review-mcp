@@ -96,7 +96,7 @@ services:
       # store's backups reach: that separation is the whole of what the encryption buys.
       - ${BB_MCP_VAULT_KEY_PATH:-~/.bb-pr-mcp/vault.key}:/run/secrets/vault.key:ro
       # The store itself, which is the one thing here that must survive a restart.
-      - review-vault:/vault
+      - ./.bb-pr-mcp/review-vault:/vault
 
     read_only: true
     cap_drop: ["ALL"]
@@ -132,7 +132,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-keycloak}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development-only-replace-before-deploying}
     volumes:
-      - keycloak-db:/var/lib/postgresql/data
+      - ./.bb-pr-mcp/keycloak-db:/var/lib/postgresql/data
     security_opt: ["no-new-privileges:true"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-keycloak} -d ${POSTGRES_DB:-keycloak}"]
@@ -223,5 +223,4 @@ services:
       start_period: 20s
 
 volumes:
-  review-vault:
   keycloak-db:
