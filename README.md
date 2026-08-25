@@ -233,26 +233,59 @@ A few things worth knowing:
   token means restarting with a new one.
 - The container runs as a non-root user, read-only, with every capability dropped.
 
-## Trying the shared server from Claude Desktop
+## Connecting to the shared server
 
 The shared deployment — several people, one server, each with their own Bitbucket
-account — is still being built. What works today is enough to drive end to end locally.
+account — runs behind a single origin. Both the MCP endpoint and Keycloak are served from
+it, because the issuer is a string that has to mean the same thing in the token, the
+discovery document, the browser and the configuration.
 
-**A Claude Desktop *custom connector* cannot reach `localhost`.** Claude connects to a
-remote MCP server from Anthropic's own infrastructure, not from your machine, so a server
-on your laptop is unreachable however it is configured. The local loop goes through
-[`mcp-remote`](https://www.npmjs.com/package/mcp-remote): a stdio bridge that runs on your
-machine, performs the OAuth flow in your browser, and speaks HTTP to the server.
+**Neither Claude Desktop nor Claude Code reaches the server directly over `localhost`.**
+A Claude *custom connector* is fetched by Anthropic's infrastructure rather than by your
+machine, so a server on your laptop is unreachable however it is configured. The local
+loop goes through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote): a stdio bridge
+that runs on your machine, performs the OAuth flow in your browser, and speaks HTTP to the
+server.
 
-Start the authorization server and the review server:
+Copy `.env.example` to `.env`, then start it:
 
 ```
-docker compose -f docker compose --profile shared up -d
-
-BB_MCP_PUBLIC_URL=http://localhost:8000/mcp BB_MCP_OIDC_ISSUER=http://localhost:8080/realms/streamstech BB_MCP_OIDC_CLIENT_SECRET=development-only-replace-before-deploying-too BB_MCP_VAULT_KEY="$(uv run python -c 'from bitbucket_pr_review_mcp.vault import VaultKey; print(VaultKey.generate().exported())')" uv run bb-pr-mcp --http --port 8000
+cp .env.example .env      # fill in the secrets; the defaults are the loopback stack
+docker compose --profile shared up -d
 ```
 
-Then add this to `claude_desktop_config.json`
+That brings up Postgres, Keycloak, nginx and the review server. `docker compose --profile
+shared ps` should show four healthy containers, and `http://localhost:8080/mcp` should
+answer `401` with a `WWW-Authenticate` header naming the `bitbucket:review` scope — an
+unauthenticated request being refused is the system working.
+
+### Claude Code
+
+Register the bridge once, for every project, with `-s user`:
+
+```
+claude mcp add bitbucket-pr-review -s user -- npx -y mcp-remote http://localhost:8080/mcp 3334 --allow-http --static-oauth-client-info "{\"client_id\":\"bitbucket-pr-review-cli\"}"
+```
+
+`-s user` writes it to the top-level `mcpServers` key in `~/.claude.json`, which applies
+in every directory. The alternatives are `-s local` (this project only, also in
+`~/.claude.json`, under `projects`) and `-s project` (a committed `.mcp.json`). Do not
+register it at more than one scope: the configs are separate, user scope wins, and the
+one you edit later may not be the one being used.
+
+Check it:
+
+```
+claude mcp get bitbucket-pr-review
+```
+
+which should report `Scope: User config` and `Status: ✔ Connected`. A session picks up
+MCP servers when it starts, so an already-running Claude Code will not see a
+newly-registered server until it is restarted.
+
+### Claude Desktop
+
+Add this to `claude_desktop_config.json`
 (`%APPDATA%\Claude\` on Windows, `~/Library/Application Support/Claude/` on macOS — a
 Microsoft Store install keeps it under
 `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\`):
@@ -264,7 +297,7 @@ Microsoft Store install keeps it under
       "command": "npx",
       "args": [
         "-y", "mcp-remote",
-        "http://localhost:8000/mcp",
+        "http://localhost:8080/mcp",
         "3334",
         "--allow-http",
         "--static-oauth-client-info", "{\"client_id\":\"bitbucket-pr-review-cli\"}"
@@ -289,8 +322,17 @@ A few things worth knowing:
   registers all of them, because getting it wrong fails at the last step of the flow.
 - **`--allow-http` is required** while the server is on plain http. A real deployment is
   https, and this server refuses to describe itself over http anywhere but loopback.
-- **the `shared` profile is development configuration.** Its Keycloak has an
-  in-memory database and passwords written down in the file.
+- **The `3334` argument is the bridge's own port**, and the realm registers the callback
+  on it. Two Claude clients bridging at once want different ports.
+- **The `shared` profile's *defaults* are development configuration** — a bootstrap admin
+  whose password is in `docker-compose.yaml`, a realm carrying a user whose password is in
+  the realm file, and plain http on loopback. Every one of those is a variable with a
+  default, so a real deployment overrides them in `.env` rather than editing either file.
+  See [docs/deploying-the-shared-server.md](docs/deploying-the-shared-server.md).
+- **Changing the origin needs the realm imported again.** The realm is imported once, into
+  Keycloak's database; `--import-realm` leaves an existing realm alone. Drop that volume by
+  name — `docker volume rm bitbucket-pr-review-mcp_keycloak-db` — and never `down -v`,
+  which would take the credential vault with it.
 
 ### Operating it
 
