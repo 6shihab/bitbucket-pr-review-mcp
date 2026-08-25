@@ -7,6 +7,7 @@ does — one row, deleted — but what it says it has *not* done.
 
 from __future__ import annotations
 
+import os
 from datetime import date, timedelta
 
 import httpx
@@ -278,6 +279,33 @@ class TestHealth:
 
         assert code == 1
         assert "connect a Bitbucket account" in said(capsys)
+
+    def test_a_store_it_cannot_create_is_reported_not_raised(
+        self, settings, allowlist, monkeypatch, capsys
+    ):
+        """Every other refusal in `_run_http` exits 2 with a sentence. This one escaped
+        the block that does that and came out as a traceback ending in `os.open`, which
+        reads as a crash — from an operator's side, indistinguishable from a bug."""
+        from bitbucket_pr_review_mcp.__main__ import _run_http
+
+        def refuse(*args, **kwargs):
+            raise PermissionError(13, "Permission denied")
+
+        monkeypatch.setattr(os, "open", refuse)
+
+        code = _run_http(
+            Settings(
+                vault_file=settings.vault_file,
+                public_url="https://review.example.com/mcp",
+                oidc_issuer="https://review.example.com/realms/x",
+            ),
+            allowlist,
+            "127.0.0.1",
+            0,
+        )
+
+        assert code == 2
+        assert "Cannot start the shared server" in said(capsys)
 
     def test_an_unreachable_authorization_server_is_reported(self, healthy, allowlist):
         def refuse():

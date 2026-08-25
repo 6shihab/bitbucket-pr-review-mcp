@@ -314,11 +314,15 @@ def _run_http(settings: Settings, allowlist: Allowlist, host: str, port: int) ->
     try:
         key = VaultKey.required()
         resource = ProtectedResource.of(settings.public_url, settings.oidc_issuer)
+        # Opening the store belongs in here with the others. It is the same kind of
+        # refusal — a deployment that cannot hold credentials safely — and left outside,
+        # its message arrived wrapped in a traceback, which reads as a crash rather than
+        # as the sentence it is.
+        vault = CredentialVault.at(settings.vault_file, key)
     except (CredentialError, DiscoveryError) as exc:
         logger.error("Cannot start the shared server: {}", exc)
         return 2
 
-    vault = CredentialVault.at(settings.vault_file, key)
     verifier = TokenVerifier(
         resource=resource,
         keys=SigningKeys(
