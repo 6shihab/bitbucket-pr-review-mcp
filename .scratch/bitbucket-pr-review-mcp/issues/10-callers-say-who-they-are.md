@@ -1,111 +1,108 @@
-# 10 — Callers say who they are: this server becomes an OAuth authorization server
+# 10 — Callers say who they are
 
-**Decided 2026-08-25.** The target client is **Claude on the web, on a Team plan**. That
-answers the question this ticket was blocked on, and it answers it against the spec's
-first guess. Bearer tokens are out. This is an OAuth 2.1 implementation.
+**Decided 2026-08-25.** The target client is **Claude on the web, on a Team plan**, added
+as a custom connector. That rules out the cheap option and makes this OAuth.
 
-## Why the cheap option is not available
+Claude does support a fixed header credential (`static_headers`, beta), and it is the
+wrong shape: an **organization administrator enters one credential when adding the
+connector, and Claude sends it on every request** — one credential, shared by everybody.
+The requirement is the opposite. Every other remote-MCP option Claude offers is OAuth.
 
-Claude does support a fixed credential in a request header (`static_headers`, in beta).
-It is the wrong shape for what was asked: an **organization administrator enters one
-credential when adding the connector, and Claude sends it on every request**. One
-credential, shared by the whole organization. The requirement is the opposite — each
-person supplies their own Atlassian email and API token, and posts under their own name.
+The ticket has two halves. **10A is needed whichever way 10B is decided**, so it is built
+first and does not wait on anything.
 
-Everything else Claude supports for remote MCP is OAuth. So the server becomes an OAuth
-authorization server, and there is no smaller version of this ticket.
+---
 
-## What that buys, which is more than it costs
+## 10A — This server is an OAuth resource server
 
-The OAuth authorization page **is** the Bitbucket credential page. When somebody connects
-the connector, Claude opens our `/authorize` in *their own browser*; that page asks for
-their Atlassian email and API token, verifies the pair against Bitbucket, stores it in the
-vault, and redirects back with an authorization code.
-
-No setup URL travels through the model's transcript. Ticket 13 existed to defend a public
-link against whoever read it first, and that attack — supplying a credential into somebody
-else's session — cannot happen when the browser arrived by OAuth redirect carrying its own
-`state` and PKCE verifier. ADR-0004's accepted risk is resolved by construction rather than
-by a typed code, and ticket 13 shrinks to the form's own protections.
-
-## The shape, from Anthropic's connector documentation
-
-Confirmed 2026-08-25 at `claude.com/docs/connectors/building/authentication`:
-
-- Every MCP request without a valid token answers **401** with
-  `WWW-Authenticate: Bearer resource_metadata="..."`. Claude does **not** honour that
-  header on a 200.
-- `/.well-known/oauth-protected-resource` (RFC 9728). Its `resource` must equal the MCP
-  URL **exactly as the Owner types it into Claude**, path included.
-- `/.well-known/oauth-authorization-server` (RFC 8414), advertising
-  `code_challenge_methods_supported: ["S256"]` and `offline_access` in `scopes_supported`
-  — the second is how Claude knows to ask for a refresh token.
-- `/authorize` and `/token`. **`/token` must accept
-  `application/x-www-form-urlencoded`**; a JSON-only body parser answers 415 and the
-  connection fails. `/register`, if implemented, takes JSON instead — different parser,
-  same server.
-- Redirect URI to accept: `https://claude.ai/api/mcp/auth_callback`, for web, Desktop and
-  mobile alike. Claude Code uses an RFC 8252 loopback redirect on a port that changes
-  every session, so `localhost`/`127.0.0.1` must match ignoring the port if we want it to
-  work there too.
-- PKCE **S256 on every request**, no exceptions.
-- The `resource` parameter (RFC 8707) is sent on both authorization and token requests,
-  and the access token's audience must be validated against it.
-- `iss` in authorization responses (RFC 9207), advertised as
-  `authorization_response_iss_parameter_supported`.
-- Refresh tokens **rotated** — Claude registers as a public client — with the new one
-  returned in the same response that invalidates the old. A dead refresh token answers
-  `invalid_grant`, not a custom code.
-- **Ten seconds** for discovery, registration and token; thirty for refresh. Nothing on
-  the token path may call Bitbucket.
-
-## Client registration: pre-registered, not dynamic
-
-Claude supports Dynamic Client Registration and would use it by default, and the same
-documentation recommends against it for servers that expect volume — it registers a fresh
-client on every new connection. For one team's own connector the Owner can paste a client
-id and secret into Advanced settings once, which Anthropic describes as the right choice
-when you want a stable OAuth client scoped to one organization.
-
-Pre-registered is therefore the primary path, and it also means **no open registration
-endpoint on a host holding the team's credentials**. DCR can be added later if the
-friction is real.
-
-## The question this ticket has to answer, and it is not a small one
-
-`/authorize` is reachable by anyone on the internet who has the URL. Claude does not tell
-us which Claude user is at the other end — the redirect arrives from the person's browser,
-not from Anthropic. So the server cannot assume a caller is on the team, and **enrolment
-needs a gate of its own**.
-
-The exposure is smaller than it first looks: an outsider can only enrol *their own*
-Atlassian token, bounded by our allowlist, so they would get a server that returns 403s.
-What they can do is fill the vault with rows. The proposed gate is an email domain
-allowlist checked after the credential verifies against Bitbucket — the account Bitbucket
-returns must be `@streamstech.com`, or nothing is stored.
-
-Worth knowing separately: **Anthropic's requests come from `160.79.104.0/21`**. The MCP
-endpoint itself can be firewalled to that range, so the part of this server that holds
-credentials need not be open to the internet at all. Only `/authorize` has to be, because
-a browser goes there.
-
-**Blocked by:** nothing. **Needs, to deploy but not to build:** a public HTTPS hostname
-with a real certificate. The issuer URL is configuration.
+Validate a token, learn who the caller is, find their credential. That code is identical
+whether the tokens come from Keycloak or from an authorization server we write, which is
+why it is separated out.
 
 **Status:** ready-for-agent
 
-- [ ] `/.well-known/oauth-protected-resource` and `/.well-known/oauth-authorization-server`
-      serve documents that match the deployed URL exactly, and a test asserts they do
-- [ ] Every unauthenticated MCP request answers 401 with a `resource_metadata` pointer
-- [ ] Authorization code flow with PKCE S256, refused without a verifier
-- [ ] `/token` parses form-urlencoded, answers inside a second, and never calls Bitbucket
-- [ ] Access tokens carry an audience, and one minted for another resource is refused
-- [ ] Refresh tokens rotate, and a replayed one is refused with `invalid_grant`
-- [ ] The `/authorize` page asks for the Atlassian email and API token, verifies them
-      against Bitbucket, shows the display name back, and refuses over-broad scopes —
-      the existing setup page, moved
-- [ ] A verified account outside the allowed email domain is refused and nothing is stored
-- [ ] The credential lands in the vault against a person id minted at authorization
-- [ ] The person id, never the token, appears in log lines
-- [ ] `https://claude.ai/api/mcp/auth_callback` is accepted; an unregistered redirect is not
+- [ ] Every MCP request without a valid token answers **401** with
+      `WWW-Authenticate: Bearer resource_metadata="..."`. Claude does **not** honour that
+      header on a 200, so a tool-level error is not a substitute
+- [ ] `/.well-known/oauth-protected-resource` (RFC 9728) serves a document whose
+      `resource` equals the MCP URL **exactly as the Owner types it into Claude**, path
+      included, and whose `authorization_servers` names the issuer — first entry wins,
+      Claude does not fall back to later ones
+- [ ] Access tokens are verified against the issuer's JWKS: signature, issuer, expiry
+- [ ] **The audience is checked.** A token minted for another resource is refused, and
+      there is a test that mints one and watches it bounce
+- [ ] The token's subject maps to a person id, and that person's vault row is what the
+      session uses — decided at the transport, never from a tool argument
+- [ ] A caller whose subject has no stored Bitbucket credential is sent to connect one,
+      rather than getting an error that reads like a bug
+- [ ] Log lines name the person, never the token
 - [ ] The stdio server keeps working with no authentication, because there is one caller
+
+## 10B — Where the authorization server comes from
+
+**Open. See the two findings below, which are the reason this is not a coin toss.**
+
+Either Keycloak issues the tokens and this server only validates them, or the server
+implements the authorization endpoints itself. The consequences reach further than the
+endpoint list — they decide what "who is this person" means, and whether ticket 13 exists.
+
+### If Keycloak
+
+Keycloak publishes an official MCP authorization-server integration and, since 26.7,
+Client ID Metadata Document support. It brings PKCE, refresh rotation, discovery, DCR and
+real user management, none of which then has to be written here or reviewed here.
+
+Two workarounds are needed, and both are known rather than discovered later:
+
+1. **Keycloak does not implement RFC 8707.** It ignores the `resource` parameter that
+   Claude sends and that the MCP specification makes mandatory. The workaround is an
+   audience mapper putting the MCP server's URL into the token's `aud` claim, which is
+   static rather than derived from the request — fine for one resource server, which is
+   what this is. Tracked upstream as keycloak#14355 and keycloak#41526.
+2. **Serve Keycloak under the same hostname as the MCP endpoint.** Anthropic's own
+   documentation says a cross-host authorization server is supported and explains the
+   discovery handshake; a claude.ai issue reports the web client ignoring
+   `authorization_endpoint`/`token_endpoint` and constructing `/authorize` and `/token`
+   from the MCP base URL instead. The two disagree. Reverse-proxying Keycloak under one
+   domain costs nothing and makes the disagreement moot, which is the right way to treat
+   a contradiction you cannot resolve from outside.
+
+**What it costs:** the elegant part of the previous plan dies. Keycloak authenticates
+people to Keycloak; it knows nothing about Bitbucket API tokens. So the authorization page
+can no longer *be* the credential page, and collecting the Atlassian token becomes a second
+step — ticket 13, revived.
+
+**What it buys, and this is the larger number:** nobody hand-rolls an authorization server
+on a host holding the team's merge-capable credentials. Identity becomes real — disable
+somebody in Keycloak and their access is gone, which beats the email-domain check below by
+a distance. And the open-enrolment problem disappears entirely, because `/authorize`
+belongs to Keycloak and Keycloak decides who may authenticate.
+
+### If we implement it
+
+One login instead of two: the person's Atlassian email and API token, verified against
+Bitbucket, *are* the authentication, and the authorization page is the credential page.
+No second service to run, back up and patch.
+
+The price is writing OAuth 2.1 correctly — PKCE S256, audience binding, refresh rotation
+with `invalid_grant`, RFC 9207 `iss`, RFC 8414 metadata, a `/token` endpoint that parses
+`application/x-www-form-urlencoded` and answers inside ten seconds without ever calling
+Bitbucket. This is the most security-critical code in the project and the easiest place
+to be subtly wrong.
+
+It also leaves `/authorize` open to the internet with no answer to "is this person on the
+team" beyond *the verified Bitbucket account's email domain*. That check is weak, and it
+is the strongest one available on this path.
+
+### Either way
+
+- Register `https://claude.ai/api/mcp/auth_callback` as a redirect URI, for web, Desktop
+  and mobile alike
+- Prefer a **pre-registered client id and secret**, pasted once into Claude's Advanced
+  settings, over Dynamic Client Registration — Anthropic recommends it for a connector
+  scoped to one organisation, and it keeps an open registration endpoint off this host
+- **Anthropic's requests come from `160.79.104.0/21`.** The MCP endpoint can be firewalled
+  to that range, so the part holding credentials need not face the internet at all. Only
+  the login and credential pages must, because a browser goes there
+
+**Needs, to deploy but not to build:** a public HTTPS hostname with a real certificate.
