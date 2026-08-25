@@ -229,6 +229,45 @@ class TestTheRealmIsConfiguredByTheEnvironment:
         assert "streamstech" in REALM["users"][0]["realmRoles"][0]
 
 
+class TestTheReadmeSendsPeopleToTheRightClient:
+    """Three clients, one error message. Configure a connector with the bridge's client
+    id and Keycloak answers `Invalid parameter: redirect_uri` — which names the
+    parameter, not the client, and reads identically whatever the actual cause was.
+
+    The README's table is the only place that distinguishes them, so it is checked
+    against the realm rather than trusted to stay true."""
+
+    README = (ROOT / "README.md").read_text(encoding="utf-8")
+    HOSTED_CALLBACK = "https://claude.ai/api/mcp/auth_callback"
+
+    def connector_row(self) -> str:
+        rows = [
+            line
+            for line in self.README.splitlines()
+            if line.startswith("|") and "connector" in line.lower() and "`" in line
+        ]
+
+        assert rows, "the README no longer has a row naming the connector's client"
+        return rows[0]
+
+    def test_it_names_the_client_that_registers_the_hosted_callback(self):
+        registers = {
+            client["clientId"]
+            for client in REALM["clients"]
+            if self.HOSTED_CALLBACK in client["redirectUris"]
+        }
+
+        assert len(registers) == 1, "exactly one client should own the hosted callback"
+        assert registers.pop() in self.connector_row()
+
+    def test_it_does_not_name_the_public_bridge_client(self):
+        """The failure this table exists to prevent, stated as its own assertion."""
+        assert CLI["clientId"] not in self.connector_row()
+
+    def test_the_bridge_client_could_not_serve_a_connector_anyway(self):
+        assert self.HOSTED_CALLBACK not in CLI["redirectUris"]
+
+
 class TestNobodyCanShipThisByAccident:
     def test_the_client_secrets_are_variables_rather_than_values(self):
         """Stronger than the warning string they used to carry: there is no secret in

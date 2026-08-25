@@ -245,7 +245,29 @@ A Claude *custom connector* is fetched by Anthropic's infrastructure rather than
 machine, so a server on your laptop is unreachable however it is configured. The local
 loop goes through [`mcp-remote`](https://www.npmjs.com/package/mcp-remote): a stdio bridge
 that runs on your machine, performs the OAuth flow in your browser, and speaks HTTP to the
-server.
+server. Once the server has a public https address, a custom connector reaches it
+directly and the bridge is no longer needed.
+
+### Which client id goes where
+
+The realm holds three OAuth clients because three different things authenticate, and
+they are not interchangeable. Using the wrong one fails at the *first* step, with
+`Invalid parameter: redirect_uri` on a Keycloak error page — which names the parameter
+rather than the client, and is the same message for every cause.
+
+| You are configuring | Client id | Secret |
+|---|---|---|
+| A custom connector, in Claude's settings | `bitbucket-pr-review` | `BB_MCP_CONNECTOR_CLIENT_SECRET` |
+| `mcp-remote`, for Claude Code or Desktop | `bitbucket-pr-review-cli` | none — it is a public client |
+| Nothing. This server uses it itself, for `/connect` | `bitbucket-pr-review-web` | `BB_MCP_OIDC_CLIENT_SECRET` |
+
+The split follows where the callback lands. A connector's callback is
+`https://claude.ai/api/mcp/auth_callback`, on Anthropic's infrastructure, so that client
+is confidential and its secret lives there. The bridge's callback is a loopback port on
+somebody's laptop, so that client holds no secret at all — a secret in a config file on a
+laptop is not a secret, and PKCE is what protects a loopback flow. Registering the
+hosted callback on the public client would hand the confidential flow to a client that
+cannot keep anything, so it is not registered, and Keycloak refuses it.
 
 Copy `.env.example` to `.env`, then start it:
 
