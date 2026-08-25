@@ -110,6 +110,29 @@ class TestTheKey:
         with pytest.raises(VaultKeyMissing):
             VaultKey.required()
 
+    def test_a_directory_where_the_key_should_be_says_where_it_came_from(
+        self, monkeypatch, tmp_path
+    ):
+        """The commonest way this deployment breaks, and the least legible.
+
+        Docker creates a bind mount's source path when it does not exist, and it creates
+        a *directory*. So a key file that was never made arrives inside the container as
+        a directory named `vault.key` — on Linux the mount itself fails first, with an
+        OCI error about mounting a directory onto a file, and nothing anywhere says
+        "there is no key". Saying it here is the only place it fits.
+        """
+        as_directory = tmp_path / "vault.key"
+        as_directory.mkdir()
+        monkeypatch.delenv(KEY_ENV, raising=False)
+        monkeypatch.setenv(KEY_FILE_ENV, str(as_directory))
+
+        with pytest.raises(VaultKeyMissing) as caught:
+            VaultKey.required()
+
+        message = str(caught.value)
+        assert "directory" in message.lower()
+        assert "did not exist" in message, "the cause, not just the symptom"
+
     def test_the_key_does_not_print_itself(self, key):
         assert key.exported() not in repr(key)
         assert key.exported() not in str(key)

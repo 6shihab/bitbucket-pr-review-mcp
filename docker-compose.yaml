@@ -94,7 +94,27 @@ services:
       - ./config/repositories.yaml:/config/repositories.yaml:ro
       # The key, read-only and from outside the repository. It must not live where the
       # store's backups reach: that separation is the whole of what the encryption buys.
-      - ${BB_MCP_VAULT_KEY_PATH:-~/.bb-pr-mcp/vault.key}:/run/secrets/vault.key:ro
+      #
+      # Required, with no default, and an **absolute** path. Both halves of that are
+      # scars. A default of `~/.bb-pr-mcp/vault.key` expands to a home directory on some
+      # machines and is treated as relative to this directory on others, and a relative
+      # bind source is resolved against the project directory — so the same file said
+      # different things on a laptop and on a server. Worse, when a bind source does not
+      # exist Docker creates a *directory* there and then fails to mount it onto a file,
+      # which is a mount error several layers away from "there is no key".
+      - type: bind
+        source: "${BB_MCP_VAULT_KEY_PATH:?set this in .env to the ABSOLUTE path of the vault key file on this host (see .env.example). It must already exist - nothing generates one for you}"
+        target: /run/secrets/vault.key
+        read_only: true
+        bind:
+          # Asks Docker not to invent the source path. When it is honoured, a missing key
+          # is reported as a missing path instead of being created as a directory and
+          # failing later as a mount type mismatch.
+          #
+          # It is not honoured everywhere — Docker Desktop on Windows creates the
+          # directory regardless, verified. So it is a nicety, not the guard: the guard
+          # is `VaultKey.required`, which refuses to start on a directory and says why.
+          create_host_path: false
       # The store itself, which is the one thing here that must survive a restart.
       - ./.bb-pr-mcp/review-vault:/vault
 

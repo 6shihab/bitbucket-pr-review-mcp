@@ -51,6 +51,35 @@ Nothing generates a key for you. A generated key is a key nobody backed up, and 
 nobody backed up is every stored credential lost on the next restart, silently — which is
 the worst property a failure can have.
 
+**Make it before the first `up`, at an absolute path, outside the working tree:**
+
+```
+sudo mkdir -p /etc/bb-pr-mcp
+python3 -c "import os,base64;print(base64.b64encode(os.urandom(32)).decode())" \
+  | sudo tee /etc/bb-pr-mcp/vault.key >/dev/null
+sudo chmod 600 /etc/bb-pr-mcp/vault.key
+```
+
+Then point `.env` at it — `BB_MCP_VAULT_KEY_PATH=/etc/bb-pr-mcp/vault.key`.
+
+**Absolute, and not a relative path**, because a relative bind source is resolved against
+the project directory: `./.bb-pr-mcp/vault.key` means one file on a laptop and a different
+one on a server, and `~/...` is expanded by some Docker versions and not others.
+
+Starting without the file is worth recognising, because the error names neither the key
+nor the path you set. Docker creates a missing bind source *as a directory*, so on Linux
+the container never starts:
+
+```
+error mounting ".../.bb-pr-mcp/vault.key" to rootfs at "/run/secrets/vault.key":
+not a directory: Are you trying to mount a directory onto a file (or vice-versa)?
+```
+
+That is "there is no key" wearing a mount error. Make the file, delete the directory
+Docker left in its place, and start again. Where the mount does succeed — Docker Desktop
+on Windows creates the directory and mounts it happily — the server refuses to start
+instead, and says so in those words.
+
 So: **back the key up separately, somewhere the store's backups do not go, and test
 restoring both together before you need to.** A backup you have not restored is a belief,
 not a backup.

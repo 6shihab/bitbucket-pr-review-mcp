@@ -119,6 +119,22 @@ class VaultKey:
 
         named = (source.get(KEY_FILE_ENV) or "").strip()
         if named:
+            # Asked before reading, rather than caught after: a directory read raises
+            # IsADirectoryError on Linux and PermissionError on Windows, so the exception
+            # type cannot be the thing that recognises this.
+            if Path(named).is_dir():
+                # Docker creates a bind mount's source path when it is absent, and it
+                # creates a directory. So this almost always means the key file was
+                # never made — the container is showing us the shape of its absence.
+                raise VaultKeyMissing(
+                    f"{KEY_FILE_ENV} names {named}, which is a directory rather than a "
+                    "key. In a container that means the host path did not exist when "
+                    "this started: Docker created it, as a directory, and mounted that. "
+                    "Make the key file on the host first, give BB_MCP_VAULT_KEY_PATH its "
+                    "absolute path, remove the directory Docker left behind, and start "
+                    "again."
+                )
+
             try:
                 return cls.parse(Path(named).read_text(encoding="utf-8"))
             except OSError as exc:
