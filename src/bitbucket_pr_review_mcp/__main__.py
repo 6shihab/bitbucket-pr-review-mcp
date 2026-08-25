@@ -674,8 +674,15 @@ def _connect_pages(settings, allowlist, vault, resource, connect_url):
             on_change=forget,
         )
 
-    logger.info("People connect their Bitbucket account at {}.", connect_url)
-    return connect, ConnectHere(connect_url)
+    # The mount's own address, trailing slash and all, rather than the bare form that
+    # redirects to it. The redirect works, but it is rebuilt from the request's headers —
+    # which is the one thing in this deployment that has actually been wrong, and when it
+    # was, this link sent people to an address only the container could reach. A link
+    # nobody has to be redirected cannot be redirected wrongly.
+    landing = f"{connect_url}/"
+
+    logger.info("People connect their Bitbucket account at {}.", landing)
+    return connect, ConnectHere(landing)
 
 
 class _ConnectPageUnavailable:

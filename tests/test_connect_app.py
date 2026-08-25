@@ -327,7 +327,30 @@ class TestCrossSiteRequests:
 
 class TestWhatACallerIsTold:
     def test_the_url_it_hands_back_is_the_connect_page(self):
-        assert ConnectHere(f"{PUBLIC}/connect").start() == f"{PUBLIC}/connect"
+        assert ConnectHere(f"{PUBLIC}/connect/").start() == f"{PUBLIC}/connect/"
+
+    def test_the_shared_server_hands_out_the_mounts_own_address(self):
+        """With the trailing slash, so nothing has to redirect it.
+
+        `/connect` does redirect to `/connect/`, correctly. But that redirect is built
+        from the request's headers, and when a proxy dropped `Host` the server rebuilt it
+        as `127.0.0.1:8000` — handing people a link into the container. The final address
+        is a string this server already knows without asking the request anything.
+        """
+        from bitbucket_pr_review_mcp.__main__ import _connect_pages
+        from bitbucket_pr_review_mcp.discovery import ProtectedResource
+        from bitbucket_pr_review_mcp.settings import Settings
+
+        resource = ProtectedResource.of(f"{PUBLIC}/mcp", f"{PUBLIC}/realms/streamstech")
+        _, connect_here = _connect_pages(
+            Settings(oidc_client_secret="a-secret"),
+            None,
+            None,
+            resource,
+            f"{PUBLIC}/connect",
+        )
+
+        assert connect_here.start() == f"{PUBLIC}/connect/"
 
     def test_it_does_not_repeat_the_loopback_promise(self):
         """That page expires in five minutes and works once. This one does neither, and
