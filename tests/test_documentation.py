@@ -22,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 ARCHITECTURE = (ROOT / "docs" / "architecture.md").read_text(encoding="utf-8")
 ADRS = sorted((ROOT / "docs" / "adr").glob("*.md"))
+DEPLOYING = (ROOT / "docs" / "deploying-the-shared-server.md").read_text(encoding="utf-8")
 
 
 def flat(prose: str) -> str:
@@ -224,3 +225,55 @@ class TestTheCredentialLifecycle:
 
     def test_it_distinguishes_the_setup_token_from_the_api_token(self):
         assert "a *different* single-use token" in FLAT_README
+
+
+class TestTheDeploymentDocument:
+    """An operator who has not read this should not be running the shared server, so the
+    sentences that make that true are checked rather than hoped for."""
+
+    FLAT = flat(DEPLOYING)
+
+    def test_it_says_what_one_compromise_costs(self):
+        assert "What one compromise costs" in DEPLOYING
+
+    def test_it_names_branch_restrictions_as_what_survives(self):
+        assert "branch restrictions" in self.FLAT.lower()
+        assert "still works after this server is owned" in self.FLAT
+
+    def test_it_says_every_credential_can_merge(self):
+        assert "can merge pull requests" in self.FLAT
+        assert "0002-comment-only-blast-radius.md" in DEPLOYING
+
+    def test_it_says_the_key_must_not_sit_with_the_backups(self):
+        assert "must not live where the database" in self.FLAT
+        assert "back the key up separately" in self.FLAT.lower()
+
+    def test_it_says_rotation_does_not_re_enrol_anybody(self):
+        assert "nobody re-enrols" in self.FLAT
+
+    def test_it_says_what_revoking_does_not_do(self):
+        for elsewhere in ("Keycloak", "Atlassian"):
+            assert elsewhere in DEPLOYING
+
+    def test_it_admits_the_compose_file_is_development_configuration(self):
+        assert "development configuration" in self.FLAT.lower()
+
+    def test_the_readme_sends_people_here_before_they_deploy(self):
+        assert "deploying-the-shared-server.md" in README
+
+    def test_the_architecture_document_links_it(self):
+        assert "deploying-the-shared-server.md" in ARCHITECTURE
+
+
+class TestTheOperatorCommands:
+    async def test_every_one_of_them_is_documented(self, tool_names):
+        for command in ("--health", "--who", "--revoke", "--rotate-key"):
+            assert command in README, command
+
+    async def test_none_of_them_is_a_tool(self, tool_names):
+        """A pull request description must not be able to talk a Caller into revoking a
+        colleague, rotating a key, or asking who else is enrolled."""
+        names = await tool_names()
+
+        for word in ("health", "revoke", "rotate", "who", "enrol"):
+            assert not any(word in name for name in names), word

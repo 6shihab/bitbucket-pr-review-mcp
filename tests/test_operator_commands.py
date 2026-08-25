@@ -9,9 +9,16 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+import httpx
 import pytest
 
-from bitbucket_pr_review_mcp.__main__ import _run_revoke, _run_who, configure_logging
+from bitbucket_pr_review_mcp.__main__ import (
+    _run_health,
+    _run_revoke,
+    _run_rotate,
+    _run_who,
+    configure_logging,
+)
 from bitbucket_pr_review_mcp.credentials import Credential, StoredCredential
 from bitbucket_pr_review_mcp.settings import Settings
 from bitbucket_pr_review_mcp.tokens import person_id
@@ -51,6 +58,15 @@ def connect(vault, person: str, email: str, token: str, *, expires_on: date | No
             expires_on=expires_on or (date.today() + timedelta(days=200)),
         ),
     )
+
+
+@pytest.fixture
+def keycloak_http():
+    """The authorization server, reachable, so health can ask it about itself."""
+    from .oauth import Keycloak, new_key, public_jwk
+
+    keycloak = Keycloak([public_jwk(new_key(), "k")])
+    return keycloak.client
 
 
 def said(capsys) -> str:
@@ -211,3 +227,149 @@ class TestWhatRevokingDoesNotDo:
 
     def test_it_does_not_claim_to_have_finished_the_job(self, spoken):
         assert "That is all this command can do" in spoken
+
+
+class TestHealth:
+    """One command, and a shell status a monitoring system can act on: 0 healthy,
+    1 something to look at, 2 this will not start."""
+
+    @pytest.fixture
+    def healthy(self, settings, monkeypatch) -> Settings:
+        """`settings` first: it supplies the vault key and starts log capture."""
+        monkeypatch.setenv("BB_MCP_PUBLIC_URL", "https://review.streamstech.com/mcp")
+        monkeypatch.setenv("BB_MCP_OIDC_ISSUER", ISSUER)
+        monkeypatch.setenv("BB_MCP_OIDC_CLIENT_SECRET", "a-secret")
+        return Settings(vault_file=settings.vault_file)
+
+    def test_a_working_deployment_exits_zero(self, healthy, allowlist, keycloak_http):
+        assert _run_health(healthy, allowlist, keycloak_http) == 0
+
+    def test_no_vault_key_means_it_will_not_start(
+        self, healthy, allowlist, monkeypatch, keycloak_http
+    ):
+        monkeypatch.delenv(KEY_ENV, raising=False)
+
+        assert _run_health(healthy, allowlist, keycloak_http) == 2
+
+    def test_an_address_claude_would_reject_means_it_will_not_start(
+        self, healthy, allowlist, monkeypatch, keycloak_http
+    ):
+        monkeypatch.setenv("BB_MCP_PUBLIC_URL", "review.streamstech.com/mcp")
+
+        assert _run_health(Settings(vault_file=healthy.vault_file), allowlist, keycloak_http) == 2
+
+    def test_plain_http_is_something_to_look_at(
+        self, healthy, allowlist, monkeypatch, keycloak_http, capsys
+    ):
+        monkeypatch.setenv("BB_MCP_PUBLIC_URL", "http://localhost:8000/mcp")
+        monkeypatch.setenv("BB_MCP_OIDC_ISSUER", "http://localhost:8080/realms/x")
+
+        code = _run_health(Settings(vault_file=healthy.vault_file), allowlist, keycloak_http)
+
+        assert code == 1
+        assert "http" in said(capsys)
+
+    def test_no_client_secret_means_nobody_can_connect(
+        self, healthy, allowlist, monkeypatch, keycloak_http, capsys
+    ):
+        monkeypatch.delenv("BB_MCP_OIDC_CLIENT_SECRET", raising=False)
+
+        code = _run_health(Settings(vault_file=healthy.vault_file), allowlist, keycloak_http)
+
+        assert code == 1
+        assert "connect a Bitbucket account" in said(capsys)
+
+    def test_an_unreachable_authorization_server_is_reported(self, healthy, allowlist):
+        def refuse():
+            return httpx.AsyncClient(
+                transport=httpx.MockTransport(lambda request: httpx.Response(503))
+            )
+
+        assert _run_health(healthy, allowlist, refuse) == 1
+
+    def test_a_token_about_to_lapse_is_named(self, healthy, allowlist, keycloak_http, capsys):
+        vault = CredentialVault.at(healthy.vault_file, VaultKey.required())
+        connect(
+            vault,
+            ALICE,
+            "alice@streamstech.com",
+            ALICE_TOKEN,
+            expires_on=date.today() + timedelta(days=2),
+        )
+        vault.close()
+
+        assert _run_health(healthy, allowlist, keycloak_http) == 0
+        assert "alice@streamstech.com" in said(capsys)
+
+    def test_it_never_prints_a_token(self, healthy, allowlist, keycloak_http, capsys):
+        vault = CredentialVault.at(healthy.vault_file, VaultKey.required())
+        connect(vault, ALICE, "alice@streamstech.com", ALICE_TOKEN)
+        vault.close()
+
+        _run_health(healthy, allowlist, keycloak_http)
+
+        assert ALICE_TOKEN not in said(capsys)
+
+
+class TestRotatingTheKey:
+    def test_every_credential_moves_and_nobody_re_enrols(self, settings, vault, tmp_path):
+        connect(vault, ALICE, "alice@streamstech.com", ALICE_TOKEN)
+        connect(vault, BOB, "bob@streamstech.com", BOB_TOKEN)
+        vault.close()
+        replacement = VaultKey.generate()
+        key_file = tmp_path / "next.key"
+        key_file.write_text(replacement.exported(), encoding="utf-8")
+
+        assert _run_rotate(settings, str(key_file)) == 0
+
+        rotated = CredentialVault.at(settings.vault_file, replacement)
+        assert rotated.load(ALICE).credential.token == ALICE_TOKEN
+        assert rotated.load(BOB).credential.token == BOB_TOKEN
+        assert len(rotated.enrolled()) == 2
+        rotated.close()
+
+    def test_the_old_key_stops_working(self, settings, vault, tmp_path):
+        from bitbucket_pr_review_mcp.vault import VaultUnreadable
+
+        connect(vault, ALICE, "alice@streamstech.com", ALICE_TOKEN)
+        vault.close()
+        key_file = tmp_path / "next.key"
+        key_file.write_text(VaultKey.generate().exported(), encoding="utf-8")
+
+        _run_rotate(settings, str(key_file))
+
+        stale = CredentialVault.at(settings.vault_file, VaultKey.required())
+        with pytest.raises(VaultUnreadable):
+            stale.load(ALICE)
+        stale.close()
+
+    def test_it_says_what_to_do_next_and_in_what_order(self, settings, vault, tmp_path, capsys):
+        """Rotating and then not swapping the key leaves a server that will not start."""
+        key_file = tmp_path / "next.key"
+        key_file.write_text(VaultKey.generate().exported(), encoding="utf-8")
+
+        _run_rotate(settings, str(key_file))
+
+        spoken = said(capsys)
+        assert "BB_MCP_VAULT_KEY_FILE" in spoken
+        assert "Back the new key up" in spoken
+        assert "Destroy the old key only once" in spoken
+
+    def test_a_key_file_that_is_not_there(self, settings, vault, tmp_path):
+        assert _run_rotate(settings, str(tmp_path / "absent.key")) == 2
+
+    def test_a_file_that_does_not_hold_a_key(self, settings, vault, tmp_path):
+        rubbish = tmp_path / "rubbish.key"
+        rubbish.write_text("this is not a key", encoding="utf-8")
+
+        assert _run_rotate(settings, str(rubbish)) == 2
+
+    def test_it_prints_no_key(self, settings, vault, tmp_path, capsys):
+        replacement = VaultKey.generate()
+        key_file = tmp_path / "next.key"
+        key_file.write_text(replacement.exported(), encoding="utf-8")
+
+        _run_rotate(settings, str(key_file))
+
+        spoken = said(capsys)
+        assert replacement.exported() not in spoken

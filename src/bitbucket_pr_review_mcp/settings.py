@@ -119,6 +119,9 @@ class Settings(BaseSettings):
 
     repositories_file: Path = Path("config/repositories.yaml")
     log_level: str = "INFO"
+    # One JSON object per line, for a log aggregator. Off by default because a
+    # person reading a terminal is the commoner case, and JSON is unreadable there.
+    log_json: bool = False
     request_timeout_seconds: float = 30.0
 
     # Response ceilings. A Caller reading past these is reviewing from memory, so both

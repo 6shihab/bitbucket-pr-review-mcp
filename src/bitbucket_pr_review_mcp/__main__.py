@@ -27,7 +27,7 @@ from . import __version__
 from .client import BitbucketError, Unauthorized, build_http_client
 from .credentials import Credential, CredentialError, StoredCredential
 from .environment import EnvironmentStore, SetupUnavailable
-from .gate import CredentialGate
+from .gate import EXPIRY_WARNING_DAYS, CredentialGate
 from .keychain import Keychain
 from .scopes import TOKEN_PAGE
 from .server import build_server
@@ -38,9 +38,19 @@ from .verify import Identity, verify_credential
 SETUP_WAIT_SECONDS = 310.0
 
 
-def configure_logging(level: str) -> None:
-    """Send logs to stderr, never stdout."""
+def configure_logging(level: str, structured: bool = False) -> None:
+    """Send logs to stderr, never stdout.
+
+    `structured` writes one JSON object per line, for a shared server whose logs are
+    shipped somewhere central. What is *in* those lines is the part that matters, and it
+    is asserted rather than assumed: `tests/test_logs_are_safe_to_ship.py` runs the server
+    through its failure paths and goes looking for every secret it handles.
+    """
     logger.remove()
+    if structured:
+        logger.add(sys.stderr, level=level.upper(), serialize=True)
+        return
+
     logger.add(
         sys.stderr,
         level=level.upper(),
@@ -54,7 +64,7 @@ def configure_logging(level: str) -> None:
 def _load() -> tuple[Settings, Allowlist]:
     """Load configuration, or exit with a message a human can act on."""
     settings = Settings()
-    configure_logging(settings.log_level)
+    configure_logging(settings.log_level, settings.log_json)
     try:
         allowlist = load_allowlist(settings.repositories_file)
     except ConfigError as exc:
@@ -121,9 +131,25 @@ def main() -> None:
         metavar="EMAIL_OR_ID",
         help="Delete one person's stored Bitbucket credential from the shared server.",
     )
+    parser.add_argument(
+        "--health",
+        action="store_true",
+        help="Report whether the shared deployment is fit to run, then exit.",
+    )
+    parser.add_argument(
+        "--rotate-key",
+        metavar="KEYFILE",
+        help="Re-seal every stored credential under the key in KEYFILE, then exit.",
+    )
     args = parser.parse_args()
 
     settings, allowlist = _load()
+
+    if args.health:
+        raise SystemExit(_run_health(settings, allowlist))
+
+    if args.rotate_key:
+        raise SystemExit(_run_rotate(settings, args.rotate_key))
 
     if args.who:
         raise SystemExit(_run_who(settings))
@@ -405,6 +431,165 @@ def _matching(enrolled, wanted: str) -> list:
         if (person.email or "").lower() == needle
         or (len(needle) >= 8 and person.person.startswith(needle))
     ]
+
+
+def _run_health(
+    settings: Settings,
+    allowlist: Allowlist,
+    http_factory: Callable[[], httpx.AsyncClient] | None = None,
+) -> int:
+    """Is this deployment fit to hold other people's credentials?
+
+    Exit status is the point: 0 healthy, 1 something is wrong that an operator should
+    look at, 2 this will not start at all. Anything a monitoring system can act on.
+    """
+    from .discovery import DiscoveryError, ProtectedResource
+    from .tokens import IssuerUnreachable, SigningKeys
+    from .vault import CredentialVault, VaultError, VaultKey
+
+    concerns: list[str] = []
+
+    logger.info(
+        "Allowlist: {} repositories — {}",
+        len(allowlist.names()),
+        ", ".join(allowlist.names()),
+    )
+
+    try:
+        key = VaultKey.required()
+    except CredentialError as exc:
+        logger.error("Vault key: absent. {}", exc)
+        return 2
+    logger.info("Vault key: supplied, and not from the database.")
+
+    try:
+        resource = ProtectedResource.of(settings.public_url, settings.oidc_issuer)
+    except DiscoveryError as exc:
+        logger.error("Address: {}", exc)
+        return 2
+
+    logger.info("Serving as: {}", resource.resource)
+    logger.info("Trusting tokens from: {}", resource.authorization_servers[0])
+
+    if not resource.resource.startswith("https://"):
+        concerns.append(
+            "Serving over plain http. Anthropic connects to this address over the "
+            "internet, and an access token on the wire in clear is the whole deployment."
+        )
+
+    try:
+        vault = CredentialVault.at(settings.vault_file, key)
+    except (VaultError, OSError) as exc:
+        logger.error("Credential store: unreachable at {} ({}).", settings.vault_file, exc)
+        return 1
+
+    try:
+        enrolled = vault.enrolled()
+    finally:
+        vault.close()
+
+    unreadable = [person for person in enrolled if not person.readable]
+    logger.info(
+        "Credential store: {} at {}, {} connected.",
+        "readable",
+        settings.vault_file,
+        len(enrolled),
+    )
+    if unreadable:
+        concerns.append(
+            f"{len(unreadable)} stored credential(s) will not decrypt with this key. "
+            "Either the key is not the one they were sealed under, or those rows are damaged."
+        )
+
+    today = date.today()
+    lapsing = [
+        person
+        for person in enrolled
+        if person.readable and (person.expires_on - today).days <= EXPIRY_WARNING_DAYS
+    ]
+    for person in lapsing:
+        days = (person.expires_on - today).days
+        logger.warning(
+            "{} token {} on {}.",
+            person.email,
+            "expired" if days < 0 else f"expires in {days} days",
+            person.expires_on.isoformat(),
+        )
+
+    issuer = resource.authorization_servers[0]
+    try:
+        make_http = http_factory or (
+            lambda: build_http_client(settings.request_timeout_seconds)
+        )
+        keys = SigningKeys(issuer, make_http())
+        metadata = asyncio.run(keys.metadata())
+    except IssuerUnreachable as exc:
+        logger.error("Authorization server: unreachable. {}", exc)
+        return 1
+    logger.info(
+        "Authorization server: reachable, PKCE {}.",
+        ", ".join(metadata.get("code_challenge_methods_supported", [])) or "not advertised",
+    )
+    if "S256" not in metadata.get("code_challenge_methods_supported", []):
+        concerns.append("The authorization server does not advertise PKCE S256.")
+
+    if settings.oidc_client_secret:
+        connect_at = resource.resource.rsplit("/", 1)[0] + "/connect"
+        logger.info("Connect page: available at {}.", connect_at)
+    else:
+        concerns.append(
+            "No OIDC client secret, so nobody can connect a Bitbucket account: the page "
+            "that collects one cannot ask a browser who it is."
+        )
+
+    for concern in concerns:
+        logger.warning("{}", concern)
+
+    if concerns:
+        logger.warning("Healthy enough to run, with {} thing(s) to look at.", len(concerns))
+        return 1
+
+    logger.info("Healthy.")
+    return 0
+
+
+def _run_rotate(settings: Settings, replacement: str) -> int:
+    """Re-seal every stored credential under a new key. Nobody re-enrols.
+
+    A suspected key exposure should be an operation somebody can perform on a Tuesday
+    rather than an onboarding exercise for the whole team.
+    """
+    from pathlib import Path as _Path
+
+    from .vault import VaultError, VaultKey
+
+    try:
+        new_key = VaultKey.parse(_Path(replacement).read_text(encoding="utf-8"))
+    except OSError as exc:
+        logger.error("Cannot read the new key from {}: {}", replacement, exc.strerror)
+        return 2
+    except VaultError as exc:
+        logger.error("{} does not hold a vault key. {}", replacement, exc)
+        return 2
+
+    vault = _open_vault(settings)
+    if vault is None:
+        return 2
+
+    try:
+        resealed = vault.rotate(new_key)
+    except VaultError as exc:
+        logger.error("Nothing was rotated. {}", exc)
+        return 1
+    finally:
+        vault.close()
+
+    logger.info("Re-sealed {} stored credential(s) under the new key.", resealed)
+    logger.warning("The server is now readable ONLY with the new key.")
+    logger.warning("  1. Point BB_MCP_VAULT_KEY_FILE at {} and restart.", replacement)
+    logger.warning("  2. Back the new key up somewhere the store's backups do not reach.")
+    logger.warning("  3. Destroy the old key only once step 2 is done and verified.")
+    return 0
 
 
 def _connect_pages(settings, allowlist, vault, resource, connect_url):

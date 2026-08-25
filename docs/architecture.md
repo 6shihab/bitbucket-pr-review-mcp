@@ -314,6 +314,11 @@ with shell, or anything that compromises this process, gets every token at once.
 bounds that is branch restrictions on the repositories and short token expiries — both
 outside this code, which is the point of writing it down.
 
+Running one of these is its own subject, and it has its own document:
+[deploying the shared server](deploying-the-shared-server.md) — what one compromise
+of the host costs, why branch restrictions are the control that survives it, and how
+to keep the key somewhere the backups do not reach.
+
 `PersonalCredentials` is why nothing above the store had to change: it is one person's
 slice of the vault, shaped like the keychain, so `CredentialGate` works over either
 without knowing which it holds. Which person it means is decided when it is built, from

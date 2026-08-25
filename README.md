@@ -283,6 +283,24 @@ A few things worth knowing:
 - **`docker-compose.shared.yaml` is development configuration.** Its Keycloak has an
   in-memory database and passwords written down in the file.
 
+### Operating it
+
+```
+uv run bb-pr-mcp --health
+uv run bb-pr-mcp --rotate-key /path/to/new.key
+```
+
+`--health` says whether the deployment is fit to run — TLS, the vault key, the store, the
+allowlist, whether the authorization server is reachable, and how many people are
+connected — and exits `0` healthy, `1` something to look at, `2` this will not start.
+
+`--rotate-key` re-seals every stored credential under a new key without anybody
+re-enrolling, then tells you the order to do the rest in.
+
+**Read [docs/deploying-the-shared-server.md](docs/deploying-the-shared-server.md) before
+running this anywhere real.** It states what one compromise of the host costs, which is
+larger than it looks, and what to do about it.
+
 ### Who is connected, and taking somebody off
 
 ```
@@ -343,6 +361,7 @@ prefixed `BB_MCP_`:
 |---|---|---|
 | `BB_MCP_REPOSITORIES_FILE` | `config/repositories.yaml` | Where the allowlist lives |
 | `BB_MCP_LOG_LEVEL` | `INFO` | Logs go to stderr, never stdout |
+| `BB_MCP_LOG_JSON` | `false` | One JSON object per line, for shipping to an aggregator |
 | `BB_MCP_REQUEST_TIMEOUT_SECONDS` | `30` | Per-request timeout |
 | `BB_MCP_MAX_DIFF_CHARACTERS` | `60000` | Diff response ceiling |
 | `BB_MCP_MAX_FILE_CHARACTERS` | `40000` | File response ceiling |

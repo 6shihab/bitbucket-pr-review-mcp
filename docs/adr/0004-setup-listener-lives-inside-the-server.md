@@ -29,3 +29,22 @@ moment the Reviewer is most primed to fill one in.
 The one-time setup token travels to the Reviewer through the calling model, so it is
 visible in the transcript. Accepted knowingly: it is loopback-only, single-use, and
 expires in minutes.
+
+## What the shared server does instead
+
+This ADR accepted that the one-time setup URL travels through the model's transcript, and
+named the reason: the listener is loopback-only, single-use, and expires in minutes, so
+holding the link is worth nothing to anybody not already on the machine.
+
+A shared server voids that reasoning, and the attack it opens is not the obvious one.
+Whoever reads the link first cannot steal a credential that is not there yet — they can
+**supply** one: their token, stored as somebody else's, so that person's review posts
+under the attacker's account.
+
+The answer is not a longer token. On the shared deployment the page that collects a
+credential sits behind a Keycloak sign-in of its own, so the link stops being a
+capability: somebody who reads it and opens it is asked who they are, and connects their
+own account, which is not an attack. See `connect_app.py` and
+[the deployment document](../deploying-the-shared-server.md).
+
+The per-device listener is unchanged, and this ADR still describes it.
