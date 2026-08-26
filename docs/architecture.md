@@ -242,6 +242,30 @@ Caller says it posted — a summary that disagrees with the page it heads is wor
 summary. The Caller writes the verdict; this server counts and lays out. That split is
 [ADR-0001](adr/0001-thin-tool-server-no-embedded-model.md).
 
+## The review the server ships
+
+`prompts.py` holds one MCP prompt, `review_pull_request`, and it is the only primitive
+here that is not a tool. It reaches no network, holds no credential and calls no model:
+it is text, served when a client asks for it, and the Caller's own model does every bit
+of the reviewing.
+
+It exists because the alternative was worse. With the criteria on the client side, the
+review a pull request got depended on which client was connected — the house skills in
+one, nothing at all in another, and no way to raise the floor except asking everyone to
+install something. See [ADR-0009](adr/0009-the-server-ships-the-review-prompt.md), which
+amends half of ADR-0001's consequence and leaves the rest standing.
+
+Two seams are tested rather than trusted. Every `bitbucket_` name in the prose must be a
+tool `server.py` registers, so a rename cannot leave the prompt pointing at nothing; and
+the severity ladder must be `findings.SEVERITIES`, so the prompt cannot drift into a
+second vocabulary. The rest — what earns a comment, what to leave alone — is prose, and
+prose is reviewed the way prose is.
+
+The prompt also carries the gate that keeps a human in the loop: the review is shown to
+the user, who chooses which comments are posted, before `bitbucket_add_pr_comment` is
+called at all. That rule is repeated in the two write tools' own descriptions, because a
+client that never fetches the prompt still has to meet it.
+
 ## The credential
 
 An Atlassian API token plus the **Atlassian account email** — not a Bitbucket username,
@@ -369,6 +393,13 @@ and were corrected only by running against the real API.
 - **Deletion is a tombstone.** A deleted comment keeps its id and loses its body, so
   "update comment 5001" can be a write into a grave.
 - **Bitbucket escapes HTML in comment bodies** rather than dropping it.
+- **A FastMCP prompt cannot be defined under `from __future__ import annotations`.**
+  Prompt arguments arrive as strings and are converted by reading `inspect.signature`
+  off the raw function, with no module namespace to resolve against — so a deferred
+  annotation reaches Pydantic as the literal text `"PullRequestArg"` and rendering dies
+  with "is not fully defined". Tools are unaffected, which is why `prompts.py` is the
+  one module here without that import, and why it is registered by calling
+  `mcp.prompt(fn, ...)` rather than by decorating in `server.py`.
 - **Bitbucket Cloud does not support PKCE** — its token endpoint demands a `client_secret`
   even when sent a `code_challenge` — and **app passwords were removed on 28 July 2026**.
   Together those are why authentication is a pasted API token rather than OAuth
@@ -399,7 +430,7 @@ about it:
 
 | ADR | In the code |
 |---|---|
-| [0001](adr/0001-thin-tool-server-no-embedded-model.md) — carries reviews, does not form them | No prompt anywhere; `findings.py` and `summary.py` lay out what the Caller wrote and count what is posted |
+| [0001](adr/0001-thin-tool-server-no-embedded-model.md) — carries reviews, does not form them | No model, no second credential, no outbound call; `findings.py` and `summary.py` lay out what the Caller wrote and count what is posted |
 | [0002](adr/0002-comment-only-blast-radius.md) — comment-only blast radius | `guard.py`'s rule table; the tool list in `server.py`; no DELETE anywhere; `summary.py`'s authorship re-read |
 | [0003](adr/0003-atlassian-api-token-not-oauth.md) — API token, not OAuth | `credentials.py`, `keychain.py`, `scopes.py`, and the email trap enforced at construction |
 | [0004](adr/0004-setup-listener-lives-inside-the-server.md) — setup inside the server | `setup_app.py`, `setup_listener.py`, and `gate.py`, which decides when it may open |
@@ -407,3 +438,4 @@ about it:
 | [0006](adr/0006-the-read-surface-is-wider-than-the-pull-request.md) — wider read surface | `source.py`, `commits.py`, `repositories.py`, and `search.py`'s two extra guards |
 | [0007](adr/0007-the-container-is-given-its-credential.md) — a container is given its credential | `environment.py`, and the `Dockerfile` that has nowhere to store one |
 | [0008](adr/0008-the-shared-server-holds-other-peoples-credentials.md) — the shared server holds other people's credentials | `vault.py`: AES-GCM per row, the person's id as associated data, and a key it refuses to invent |
+| [0009](adr/0009-the-server-ships-the-review-prompt.md) — the server ships the review prompt | `prompts.py`, registered by `server.py` as the one primitive that is not a tool |

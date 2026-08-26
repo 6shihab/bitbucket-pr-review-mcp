@@ -30,6 +30,7 @@ from .findings import Finding, MalformedFinding, Reviewer
 from .gate import CredentialGate
 from .guard import Forbidden
 from .posting import BasisMoved, anchor_of
+from .prompts import PROMPT_DESCRIPTION, PROMPT_NAME, review_pull_request
 from .pullrequests import fetch_pull_request
 from .references import InvalidReference, PullRequestRef, Repository
 from .repositories import fetch_repository
@@ -44,8 +45,9 @@ from .verify import KnownIdentity
 SERVER_INSTRUCTIONS = """\
 Read and comment on Bitbucket Cloud pull requests.
 
-You are the reviewer. This server fetches material and posts your words; it holds no
-opinion about what makes code good and no review prompt of its own.
+You are the reviewer. This server fetches material and posts your words; it never forms
+an opinion of its own at call time. It does ship the review criteria: fetch the
+review_pull_request prompt and follow it, whatever else your client has installed.
 
 Start with bitbucket_get_pull_request. It returns the pull request's state and its
 Review Basis — the source commit everything you later post is validated against.
@@ -688,6 +690,13 @@ def build_server(
 
         logger.debug("Searched {} for {!r}", target, query)
         return found.to_markdown()
+
+    # The one primitive here that is not a tool. It reaches no network and holds no
+    # credential — it is text the Caller asked for, so a client with nothing installed
+    # still reviews the way this project means (ADR-0009). Registered by call rather
+    # than by decorator because the function has to be defined in a module without
+    # `from __future__ import annotations`; `prompts.py` says why.
+    mcp.prompt(review_pull_request, name=PROMPT_NAME, description=PROMPT_DESCRIPTION)
 
     return mcp
 

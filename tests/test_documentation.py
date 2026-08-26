@@ -43,6 +43,15 @@ def tool_names(wire, allowlist, keychain, setup_listener):
     return names
 
 
+@pytest.fixture
+def prompt_names(wire, allowlist, keychain, setup_listener):
+    async def names():
+        server = build_server(Settings(), allowlist, CredentialGate(keychain, setup_listener))
+        return [prompt.name for prompt in await server.list_prompts()]
+
+    return names
+
+
 class TestTheToolTable:
     async def test_every_registered_tool_is_documented(self, tool_names):
         undocumented = [name for name in await tool_names() if name not in README]
@@ -57,6 +66,23 @@ class TestTheToolTable:
 
     async def test_there_are_the_eleven_adr_0005_agreed_on(self, tool_names):
         assert len(await tool_names()) == 11
+
+
+class TestThePrompt:
+    """ADR-0009's prompt is documented like a tool, because a caller meets it like one."""
+
+    async def test_every_registered_prompt_is_documented(self, prompt_names):
+        undocumented = [name for name in await prompt_names() if name not in README]
+
+        assert undocumented == []
+
+    def test_the_readme_says_the_user_chooses_what_is_posted(self):
+        assert "Nothing is posted until you say so" in README
+        assert "not approval to post" in FLAT_README
+
+    def test_the_readme_says_it_is_text_rather_than_a_model(self):
+        assert "It is text, not a model" in FLAT_README
+        assert "0009-the-server-ships-the-review-prompt.md" in README
 
 
 class TestTheSettingsTable:
@@ -159,6 +185,7 @@ class TestTheFactsWorthKeeping:
             "start_from` and `start_to",
             "Deletion is a tombstone",
             "escapes HTML",
+            "cannot be defined under `from __future__ import annotations`",
             "does not support PKCE",
             "app passwords were removed",
             "does not read `WWW-Authenticate` off a 200",

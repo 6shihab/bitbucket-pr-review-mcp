@@ -10,5 +10,10 @@ being secure.
 
 ## Consequences
 
-The server holds no review prompt and no notion of what makes code good. Requests
-to "improve the review quality" belong to the caller, not here.
+The server forms no opinion at call time, and requests to "improve the review quality"
+are answered by editing text under test rather than by tuning a model here.
+
+**Amended by [ADR-0009](0009-the-server-ships-the-review-prompt.md).** This originally
+read "the server holds no review prompt and no notion of what makes code good". It now
+ships one prompt — text, versioned in this repository, calling nothing. Read ADR-0009
+for why that is not the thing this ADR refused; everything above still holds.

@@ -506,6 +506,34 @@ talk a Caller into disconnecting a colleague.
 A pull request is named by one string: either a Bitbucket URL or the shorthand
 `workspace/repo/id`.
 
+## The review prompt
+
+The server also ships one MCP prompt, `review_pull_request`, and it is the reason a
+review does not depend on which client you happen to be using. It carries the read
+order, what earns a comment and what does not, the CRITICAL/HIGH/MEDIUM/LOW ladder, and
+the rule that you see the review and choose the comments before any of them are posted.
+Nothing needs to be installed on the client side for it to work.
+
+| Argument | |
+|---|---|
+| `pull_request` | Required. The URL or the `workspace/repo/id` shorthand. |
+| `focus` | Optional. What to concentrate on, in your words — "the migration", "error handling". |
+
+In Claude Code it appears as a slash command, `/bitbucket-pr-review:review_pull_request`.
+Other clients list it under whatever they call prompts; a client with no prompt support
+still gets the tools, and the same gate is repeated in the two write tools' own
+descriptions.
+
+It is text, not a model. The server calls nothing, holds no second credential, and forms
+no opinion at call time — your own model does the reviewing, on your own tokens. Editing
+the review criteria means editing `src/bitbucket_pr_review_mcp/prompts.py`, which is
+versioned and tested like the rest of this repository. See
+[ADR-0009](docs/adr/0009-the-server-ships-the-review-prompt.md).
+
+**Nothing is posted until you say so.** The prompt stops after the review, shows you
+every finding and the exact comment it proposes, and asks which to send — all, some, or
+none. Being asked to review a pull request is not approval to post on it.
+
 ## Configuration
 
 Everything below has a working default. Set them in the environment or a `.env` file, all
