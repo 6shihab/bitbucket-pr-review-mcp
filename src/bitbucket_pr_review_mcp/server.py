@@ -472,6 +472,9 @@ def build_server(
         annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=False, openWorldHint=True),
         description=(
             "Post your findings as inline comments — one, or a whole review at once. "
+            "Do not call this until you have shown the user the review result and "
+            "the exact comments you propose to post, and they have chosen which to "
+            "send. A request to review a pull request is not approval to post on it. "
             "Requires the Review Basis you read the diff at. The entire batch is checked "
             "before any of it is sent: if one anchor is not in the diff, or the branch "
             "has been pushed to since you read it, nothing is posted and you are told "
@@ -516,6 +519,9 @@ def build_server(
         annotations=ToolAnnotations(readOnlyHint=False, idempotentHint=True, openWorldHint=True),
         description=(
             "Post or update the one summary comment for this pull request. Write the "
+            "Do not call this until you have shown the user the review result and "
+            "the exact comments you propose to post, and they have chosen which to "
+            "send. A request to review a pull request is not approval to post on it. "
             "verdict; this server counts the findings already posted and lays them out "
             "by severity. Called again on a later review it updates the same comment in "
             "place rather than stacking another — it finds its own by a marker in the "
